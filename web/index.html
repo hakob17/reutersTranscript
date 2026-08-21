@@ -1,0 +1,303 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Epstein accusers face harassment — video + transcript</title>
+<style>
+  :root {
+    --bg: #ffffff;
+    --ink: #111111;
+    --muted: #666666;
+    --line: #e6e6e6;
+    --accent: #fa6400;        /* Reuters orange */
+    --active-bg: #fff4ec;
+    --badge-bg: #fdeaea;
+    --badge-ink: #b00020;
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0;
+    background: var(--bg);
+    color: var(--ink);
+    font-family: "Segoe UI", -apple-system, Arial, sans-serif;
+    line-height: 1.5;
+  }
+  .wrap { max-width: 1200px; margin: 0 auto; padding: 24px 20px 60px; }
+  header.masthead {
+    border-bottom: 1px solid var(--line);
+    padding: 14px 0;
+    margin-bottom: 22px;
+    display: flex; align-items: center; gap: 10px;
+  }
+  .brand { font-weight: 700; font-size: 20px; letter-spacing: .2px; }
+  .brand .dot { color: var(--accent); }
+  .kicker { color: var(--accent); font-size: 12px; font-weight: 700; text-transform: uppercase; letter-spacing: .8px; }
+  h1 { font-size: 28px; line-height: 1.25; margin: 6px 0 4px; font-weight: 700; }
+  .meta { color: var(--muted); font-size: 13px; margin-bottom: 18px; }
+  .badge {
+    display: inline-block; font-size: 11px; font-weight: 700;
+    background: var(--badge-bg); color: var(--badge-ink);
+    border-radius: 3px; padding: 2px 8px; margin-left: 10px;
+    text-transform: uppercase; letter-spacing: .5px; vertical-align: 2px;
+  }
+  .layout { display: grid; grid-template-columns: minmax(0, 7fr) minmax(300px, 5fr); gap: 28px; }
+  @media (max-width: 900px) { .layout { grid-template-columns: 1fr; } }
+
+  .player-col .video-frame { position: relative; }
+  .player-col video {
+    width: 100%; display: block; background: #000;
+    border-radius: 4px;
+  }
+  #overlay {
+    position: absolute; left: 0; right: 0; bottom: 44px;
+    display: flex; flex-direction: column; align-items: center;
+    gap: 6px; pointer-events: none;
+    padding: 0 8%;
+    text-align: center;
+  }
+  #overlayName {
+    background: var(--accent); color: #fff;
+    font-size: 13px; font-weight: 700; letter-spacing: .3px;
+    padding: 3px 10px; border-radius: 2px;
+    text-transform: uppercase;
+  }
+  #overlayName .role { font-weight: 400; text-transform: none; opacity: .9; }
+  #overlayText {
+    background: rgba(0,0,0,.75); color: #fff;
+    font-size: 17px; line-height: 1.35;
+    padding: 4px 10px; border-radius: 2px;
+  }
+  #overlay[hidden] { display: none; }
+  .caption { color: var(--muted); font-size: 13px; margin-top: 10px; }
+
+  .transcript-col h2 {
+    font-size: 13px; text-transform: uppercase; letter-spacing: .8px;
+    color: var(--muted); margin: 0 0 10px; font-weight: 700;
+  }
+  #transcript {
+    border-top: 3px solid var(--ink);
+    max-height: 640px; overflow-y: auto;
+  }
+  .seg {
+    padding: 10px 12px;
+    border-bottom: 1px solid var(--line);
+    cursor: pointer;
+  }
+  .seg:hover { background: #fafafa; }
+  .seg.active { background: var(--active-bg); border-left: 3px solid var(--accent); padding-left: 9px; }
+  .seg .who { font-weight: 700; font-size: 13px; }
+  .seg .who .role { color: var(--muted); font-weight: 400; }
+  .seg .t {
+    color: var(--muted); font-size: 12px; font-variant-numeric: tabular-nums;
+    float: right;
+  }
+  .seg .text { margin-top: 2px; font-size: 15px; }
+
+  /* ---- stakeholder brief sections ---- */
+  section.brief { margin-top: 48px; border-top: 3px solid var(--ink); padding-top: 18px; }
+  section.brief > h2 {
+    font-size: 15px; text-transform: uppercase; letter-spacing: .8px;
+    margin: 0 0 14px; font-weight: 700;
+  }
+  .flow { display: flex; flex-wrap: wrap; align-items: stretch; gap: 8px; margin: 14px 0; }
+  .flow .step {
+    flex: 1 1 150px; min-width: 150px;
+    border: 1px solid var(--line); border-top: 3px solid var(--accent);
+    border-radius: 4px; padding: 10px 12px; background: #fafafa;
+  }
+  .flow .step b { display: block; font-size: 13px; margin-bottom: 4px; }
+  .flow .step span { font-size: 12.5px; color: var(--muted); line-height: 1.4; }
+  .flow .arrow { align-self: center; color: var(--muted); font-size: 18px; }
+  .note { font-size: 13px; color: var(--muted); margin: 10px 0 0; }
+  table.facts { border-collapse: collapse; width: 100%; margin-top: 12px; font-size: 14px; }
+  table.facts th, table.facts td {
+    text-align: left; padding: 8px 10px; border-bottom: 1px solid var(--line);
+    vertical-align: top;
+  }
+  table.facts th { font-size: 12px; text-transform: uppercase; letter-spacing: .5px; color: var(--muted); }
+  table.facts td:last-child, table.facts th:last-child { text-align: right; white-space: nowrap; }
+  .total-row td { font-weight: 700; border-top: 2px solid var(--ink); }
+  .cols2 { display: grid; grid-template-columns: 1fr 1fr; gap: 26px; }
+  @media (max-width: 900px) { .cols2 { grid-template-columns: 1fr; } }
+  .aws-list { margin: 8px 0 0; padding-left: 18px; font-size: 14px; }
+  .aws-list li { margin-bottom: 8px; }
+  .aws-list b { font-weight: 700; }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <header class="masthead">
+    <div class="brand">Wire<span class="dot">.</span>Transcript</div>
+  </header>
+
+  <div class="kicker">United States</div>
+  <h1>Epstein accusers face new waves of harassment after speaking out
+    <span class="badge" id="statusBadge" hidden>needs review</span></h1>
+  <div class="meta" id="meta">Video · 6 min &nbsp;·&nbsp; Transcript generated by speaker-attribution pipeline</div>
+
+  <div class="layout">
+    <div class="player-col">
+      <div class="video-frame">
+        <video id="video" controls preload="metadata" crossorigin="anonymous">
+          <source src="../epstein_778738_web.mp4" type="video/mp4">
+        </video>
+        <div id="overlay" hidden>
+          <div id="overlayName"></div>
+          <div id="overlayText"></div>
+        </div>
+      </div>
+      <div class="caption">Accusers of the late sex offender Jeffrey Epstein describe online abuse and
+        real-life harassment after speaking out. Speaker labels are machine-generated and
+        pending editorial review.</div>
+    </div>
+
+    <div class="transcript-col">
+      <h2>Transcript</h2>
+      <div id="transcript" aria-label="Video transcript"></div>
+    </div>
+  </div>
+
+  <section class="brief">
+    <h2>How the pipeline works</h2>
+    <div class="flow">
+      <div class="step"><b>1 · Ingest</b>
+        <span>Video package (HLS or MP4) + optional editorial shotlist. ffmpeg extracts mono 16&nbsp;kHz audio.</span></div>
+      <div class="arrow">→</div>
+      <div class="step"><b>2 · Transcribe</b>
+        <span>WhisperX (Whisper large-v3 on GPU) produces the transcript with word-level timestamps.</span></div>
+      <div class="arrow">→</div>
+      <div class="step"><b>3 · Diarize</b>
+        <span>pyannote speaker diarization splits the audio into anonymous voices (SPEAKER_00, 01, …).</span></div>
+      <div class="arrow">→</div>
+      <div class="step"><b>4 · Read on-screen names</b>
+        <span>OpenCV locally detects the few frames with lower-third name graphics; only those crops go to Claude vision to be read.</span></div>
+      <div class="arrow">→</div>
+      <div class="step"><b>5 · Attribute</b>
+        <span>Claude merges shotlist, transcript cues and on-screen names into named speakers — with confidence and cited evidence per speaker. It never guesses.</span></div>
+      <div class="arrow">→</div>
+      <div class="step"><b>6 · Publish gate</b>
+        <span>Outputs: WebVTT captions, archive JSON, review transcript. Anything uncertain is flagged <i>needs&nbsp;review</i> for an editor before captions publish.</span></div>
+    </div>
+    <p class="note">Misattribution is the failure mode to avoid, so the system is deliberately conservative:
+      a speaker stays “Unidentified” unless there is hard evidence (self-identification, narrator hand-off,
+      shotlist match, or an on-screen graphic). Every name carries its evidence in the JSON record.</p>
+  </section>
+
+  <section class="brief">
+    <h2>Production proposal — AWS</h2>
+    <div class="cols2">
+      <div>
+        <div class="flow">
+          <div class="step"><b>S3 ingest</b><span>video + shotlist land in a bucket → EventBridge → SQS queue (burst-proof, replayable)</span></div>
+          <div class="arrow">→</div>
+          <div class="step"><b>AWS Batch · GPU</b><span>g6.xlarge (L4) containers, models baked in, scales to zero when idle; Spot cuts GPU cost ~65%</span></div>
+          <div class="arrow">→</div>
+          <div class="step"><b>Lambda · attribution</b><span>Claude via Bedrock/API — no GPU held open during LLM calls</span></div>
+          <div class="arrow">→</div>
+          <div class="step"><b>Review gate</b><span>Step Functions pauses on <i>needs review</i> until an editor approves in the review UI, then captions publish</span></div>
+        </div>
+      </div>
+      <div>
+        <ul class="aws-list">
+          <li><b>Scale-to-zero economics</b> — no warm GPUs overnight; the queue absorbs wire-service bursts and Batch spins capacity up in 2–5 min.</li>
+          <li><b>No runtime dependency on Hugging Face</b> — model weights are baked into the container image at build time (<code>HF_HUB_OFFLINE=1</code>).</li>
+          <li><b>Human-in-the-loop enforced by the workflow</b> — the <i>needs review</i> state is a paused Step Function, not a convention; nothing uncertain publishes on its own.</li>
+          <li><b>Observability</b> — CloudWatch alarms on queue depth, failure rate and the % of videos flagged for review (the early quality-drift signal).</li>
+          <li><b>Secrets</b> — API keys live in Secrets Manager; per-video status in DynamoDB keyed by video ID (idempotent re-runs).</li>
+        </ul>
+      </div>
+    </div>
+  </section>
+
+  <section class="brief">
+    <h2>Time &amp; cost per video <span style="font-weight:400;color:var(--muted)">(measured on this 6-min package, 1080p)</span></h2>
+    <table class="facts">
+      <thead><tr><th>Stage</th><th>Where it runs</th><th>Approx. time</th><th>Approx. cost</th></tr></thead>
+      <tbody>
+        <tr><td>Audio extraction (ffmpeg)</td><td>GPU worker (CPU part)</td><td>~5 s</td><td>—</td></tr>
+        <tr><td>Transcription + alignment (Whisper large-v3)</td><td>GPU (L4 / measured on RTX 4090)</td><td>~1–2 min</td><td rowspan="2">$0.05–0.08 on-demand<br>(~$0.02–0.03 Spot)</td></tr>
+        <tr><td>Speaker diarization (pyannote)</td><td>GPU</td><td>~1 min</td></tr>
+        <tr><td>Lower-third detection (OpenCV)</td><td>GPU worker (CPU part)</td><td>~20 s</td><td>—</td></tr>
+        <tr><td>Reading name graphics (Claude vision, ≤16 crops)</td><td>Claude API</td><td>~15 s</td><td>$0.03–0.06</td></tr>
+        <tr><td>Speaker attribution (Claude)</td><td>Claude API</td><td>~20 s</td><td>$0.02–0.05</td></tr>
+        <tr><td>Outputs + orchestration (S3, Lambda, Step Functions)</td><td>AWS serverless</td><td>~5 s</td><td>&lt; $0.01</td></tr>
+        <tr class="total-row"><td>Total per video</td><td></td><td>≈ 3–5 min</td><td>≈ $0.10–0.20</td></tr>
+      </tbody>
+    </table>
+    <p class="note">Costs scale with video length roughly linearly on the GPU stages and stay nearly flat on the
+      LLM stages (the OpenCV pre-filter caps how many frames ever reach the vision model). Idle cost is zero —
+      compute exists only while a video is processing. First run per worker adds a one-time model download
+      unless weights are baked into the image (recommended).</p>
+  </section>
+</div>
+
+<script>
+const video = document.getElementById('video');
+const box = document.getElementById('transcript');
+let segs = [];
+
+function fmt(t) {
+  const m = Math.floor(t / 60), s = Math.floor(t % 60);
+  return m + ':' + String(s).padStart(2, '0');
+}
+
+const loadData = () => fetch('../out/epstein_778738.json').then(r => r.json()); // PACK:DATA
+loadData()
+  .then(data => {
+    if (data.status !== 'auto_ok') document.getElementById('statusBadge').hidden = false;
+    segs = data.segments;
+    box.innerHTML = segs.map((s, i) => {
+      const [name, ...roleParts] = s.speaker.split(', ');
+      const role = roleParts.join(', ');
+      return `<div class="seg" id="seg-${i}" data-start="${s.start}">
+        <span class="t">${fmt(s.start)}</span>
+        <div class="who">${name}${role ? `<span class="role">, ${role}</span>` : ''}</div>
+        <div class="text">${s.text}</div>
+      </div>`;
+    }).join('');
+    box.addEventListener('click', e => {
+      const el = e.target.closest('.seg');
+      if (!el) return;
+      video.currentTime = parseFloat(el.dataset.start) + 0.01;
+      video.play();
+    });
+  });
+
+const overlay = document.getElementById('overlay');
+const overlayName = document.getElementById('overlayName');
+const overlayText = document.getElementById('overlayText');
+
+let activeIdx = -1;
+video.addEventListener('timeupdate', () => {
+  const t = video.currentTime;
+  let idx = segs.findIndex(s => t >= s.start && t < s.end);
+  if (idx === activeIdx) return;
+
+  if (idx === -1) {
+    overlay.hidden = true;
+    const prev = document.getElementById('seg-' + activeIdx);
+    if (prev) prev.classList.remove('active');
+  } else {
+    const s = segs[idx];
+    const [name, ...roleParts] = s.speaker.split(', ');
+    const role = roleParts.join(', ');
+    overlayName.innerHTML = name === 'Unidentified'
+      ? `<span class="role">${role || 'Unidentified speaker'}</span>`
+      : `${name}${role ? ` <span class="role">· ${role}</span>` : ''}`;
+    overlayText.textContent = s.text;
+    overlay.hidden = false;
+
+    const prev = document.getElementById('seg-' + activeIdx);
+    if (prev) prev.classList.remove('active');
+    const cur = document.getElementById('seg-' + idx);
+    if (cur) {
+      cur.classList.add('active');
+      cur.scrollIntoView({ block: 'nearest', behavior: 'smooth' });
+    }
+  }
+  activeIdx = idx;
+});
+</script>
+</body>
+</html>

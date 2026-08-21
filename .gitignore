@@ -6,3 +6,5 @@ out/*.wav
 .env
 *.mp4
 out/
+.venv/
+*_share.html
