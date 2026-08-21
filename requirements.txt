@@ -1,0 +1,7 @@
+# Core pipeline
+whisperx>=3.1          # ASR + alignment + pyannote diarization
+anthropic>=0.40        # Claude API for speaker attribution
+# ffmpeg must be installed at the system level (apt install ffmpeg)
+
+# Dev
+pytest
