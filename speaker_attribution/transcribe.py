@@ -51,7 +51,7 @@ def transcribe_and_diarize(
     align_model, metadata = whisperx.load_align_model(language_code=language, device=device)
     result = whisperx.align(result["segments"], align_model, metadata, audio, device)
 
-    diarize_model = whisperx.diarize.DiarizationPipeline(use_auth_token=hf_token, device=device)
+    diarize_model = whisperx.diarize.DiarizationPipeline(token=hf_token, device=device)
     diarize_kwargs = {}
     if min_speakers is not None:
         diarize_kwargs["min_speakers"] = min_speakers

@@ -1,7 +1,12 @@
 # Core pipeline
 whisperx>=3.1          # ASR + alignment + pyannote diarization
 anthropic>=0.40        # Claude API for speaker attribution
+opencv-python-headless # local lower-third (chyron) detection before LLM vision
+hf_xet                 # fast/reliable HuggingFace model downloads
 # ffmpeg must be installed at the system level (apt install ffmpeg)
+# GPU: install torch/torchaudio from the CUDA index, e.g.
+#   pip install torch torchaudio --index-url https://download.pytorch.org/whl/cu126
 
 # Dev
 pytest
+rangehttpserver        # local demo server with HTTP Range support (video seeking)
