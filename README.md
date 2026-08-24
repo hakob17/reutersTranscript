@@ -99,9 +99,16 @@ approves before captions publish — misattribution is the failure mode to avoid
 pytest tests/          # offline; no GPU or API key needed
 ```
 
-## Next steps (phase 2)
-- Queue wrapper (SQS + AWS Batch, scale-to-zero GPU) — jobs run minutes,
-  don't block ingest; see the AWS proposal in the packed demo page
+## Production deployment (AWS, Terraform)
+`infra/` provisions the full production pipeline: S3 ingest → SQS → Step
+Functions → AWS Batch GPU workers (Spot, scale-to-zero) → attribution Lambda →
+human review gate (paused workflow + editor callback) → published outputs.
+Code is split into deployment units under `services/` (Batch GPU task
+container + five Lambdas) reusing the same `speaker_attribution` package.
+See [infra/README.md](infra/README.md) for deploy steps.
+
+## Next steps (phase 3)
 - Speaker library: enroll correspondent/official voice embeddings in pyannote
   so recurring voices are named without the LLM step
-- Review UI: video + editable segment labels, writes back to the JSON
+- Review UI: video + editable segment labels, invokes the review_callback
+  Lambda to approve/reject

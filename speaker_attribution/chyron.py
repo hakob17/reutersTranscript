@@ -17,8 +17,10 @@ import json
 from pathlib import Path
 
 import anthropic
-import cv2
-import numpy as np
+
+# cv2/numpy are imported lazily inside the detection functions so the
+# cloud attribution Lambda can import the reading/merging half of this
+# module without bundling OpenCV.
 
 from .attribute import _validate
 from .models import AttributionResult, ReviewStatus, Segment, SpeakerMapping
@@ -60,9 +62,11 @@ Rules:
 }"""
 
 
-def _text_score(band_bgr: np.ndarray) -> float:
+def _text_score(band_bgr) -> float:
     """Fraction of the band covered by text-like shapes (wide clusters of
     high-frequency strokes). Cheap and works on stylized broadcast straps."""
+    import cv2
+
     gray = cv2.cvtColor(band_bgr, cv2.COLOR_BGR2GRAY)
     grad = cv2.morphologyEx(
         gray, cv2.MORPH_GRADIENT, cv2.getStructuringElement(cv2.MORPH_RECT, (3, 3)))
@@ -82,7 +86,10 @@ def _text_score(band_bgr: np.ndarray) -> float:
 
 def _find_chyron_frames(video: Path, segments: list[Segment]) -> list[dict]:
     """Decode once, sample inside speech segments, return the best lower-third
-    crop per contiguous 'chyron on screen' event."""
+    crop per contiguous 'chyron on screen' event. Each event carries the crop
+    pre-encoded as JPEG bytes under 'jpeg'."""
+    import cv2
+
     spans = sorted((s.start, s.end, s.speaker) for s in segments)
 
     def label_at(t: float) -> str | None:
@@ -131,37 +138,38 @@ def _find_chyron_frames(video: Path, segments: list[Segment]) -> list[dict]:
     events.sort(key=lambda e: e["score"], reverse=True)
     events = events[:MAX_FRAMES_TO_LLM]
     events.sort(key=lambda e: e["t"])
-    return events
+    for e in events:
+        ok, jpg = cv2.imencode(".jpg", e.pop("band"),
+                               [cv2.IMWRITE_JPEG_QUALITY, 88])
+        e["jpeg"] = jpg.tobytes() if ok else b""
+    return [e for e in events if e["jpeg"]]
 
 
-def read_chyrons(
-    video: Path,
-    segments: list[Segment],
+def read_chyron_crops(
+    crops: list[dict],
     client: anthropic.Anthropic | None = None,
 ) -> tuple[list[dict], list[str]]:
-    """Detect chyron frames locally, then have Claude read only those crops."""
+    """Have Claude read pre-detected lower-third crops.
+
+    crops: [{"t": seconds, "label": "SPEAKER_xx", "jpeg": bytes}, ...]
+    Shared by the local CLI and the cloud attribution Lambda (which gets its
+    crops from S3, detected by the GPU task).
+    """
     if client is None:
         client = anthropic.Anthropic()
-
-    events = _find_chyron_frames(video, segments)
-    print(f"  local detector: {len(events)} chyron-candidate frames "
-          f"(labels: {sorted({e['label'] for e in events})})")
-    if not events:
+    if not crops:
         return [], ["chyron stage: no text-bearing lower-third frames detected"]
 
     content: list[dict] = []
-    for e in events:
-        ok, jpg = cv2.imencode(".jpg", e["band"], [cv2.IMWRITE_JPEG_QUALITY, 88])
-        if not ok:
-            continue
+    for c in crops:
         content.append({
             "type": "text",
-            "text": f"Lower-third crop at {e['t']:.1f}s — speaking: {e['label']}",
+            "text": f"Lower-third crop at {c['t']:.1f}s — speaking: {c['label']}",
         })
         content.append({
             "type": "image",
             "source": {"type": "base64", "media_type": "image/jpeg",
-                       "data": base64.standard_b64encode(jpg.tobytes()).decode()},
+                       "data": base64.standard_b64encode(c["jpeg"]).decode()},
         })
     content.append({
         "type": "text",
@@ -182,6 +190,18 @@ def read_chyrons(
     except json.JSONDecodeError as exc:
         return [], [f"chyron stage: LLM returned non-JSON output: {exc}"]
     return data.get("sightings", []), list(data.get("warnings", []))
+
+
+def read_chyrons(
+    video: Path,
+    segments: list[Segment],
+    client: anthropic.Anthropic | None = None,
+) -> tuple[list[dict], list[str]]:
+    """Detect chyron frames locally, then have Claude read only those crops."""
+    events = _find_chyron_frames(video, segments)
+    print(f"  local detector: {len(events)} chyron-candidate frames "
+          f"(labels: {sorted({e['label'] for e in events})})")
+    return read_chyron_crops(events, client)
 
 
 def merge_chyrons(
