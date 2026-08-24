@@ -8,3 +8,7 @@ out/*.wav
 out/
 .venv/
 *_share.html
+build/
+.terraform/
+*.tfstate
+*.tfstate.*
