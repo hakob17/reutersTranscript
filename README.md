@@ -5,6 +5,19 @@ video → ASR + diarization (WhisperX) → on-screen name reading (OpenCV +
 Claude vision) → speaker resolution against the editorial shotlist
 (Claude API) → WebVTT captions + archive JSON + review flag.
 
+## Repo layout
+```
+speaker_attribution/   shared library: transcribe, chyron, attribute, outputs
+services/gpu_task/     AWS Batch GPU container (transcribe+diarize+detect)
+services/lambdas/      ingest / attribute / notify_review / review_callback / publish
+infra/                 Terraform for the AWS pipeline (see infra/README.md)
+web/                   demo player page + pack.py (single-file stakeholder demo)
+scripts/               build_lambdas.sh (stage Lambda bundles for Terraform)
+tests/                 offline unit tests (no GPU or API key needed)
+samples/               example shotlist
+CLAUDE.md              guide for AI-assisted coding in this repo
+```
+
 ## Why the shotlist matters
 Wire packages ship with a shotlist that lists soundbites and their sources in
 broadcast order. Feeding it to the attribution stage turns speaker naming into
