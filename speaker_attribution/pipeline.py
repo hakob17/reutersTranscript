@@ -23,13 +23,30 @@ from .transcribe import extract_audio, transcribe_and_diarize
 VIDEO_EXTS = {".mp4", ".mov", ".mxf", ".mkv", ".ts", ".m3u8"}
 
 
+def is_url(source: str) -> bool:
+    return source.startswith(("http://", "https://"))
+
+
+def source_id(source: str | Path, override: str | None = None) -> str:
+    """Stable video id for a local path or a stream URL."""
+    if override:
+        return override
+    if isinstance(source, str) and is_url(source):
+        # e.g. .../playlist/1920x1080/778738/rendition.m3u8 -> 778738
+        parts = [p for p in source.split("?")[0].split("/") if p]
+        stem = Path(parts[-1]).stem
+        return parts[-2] if stem in ("rendition", "playlist", "index", "master") \
+            and len(parts) >= 2 else stem
+    return Path(source).stem
+
+
 def process_one(
-    video: Path,
+    video: Path | str,
     shotlist_path: Path | None,
     out_dir: Path,
     args: argparse.Namespace,
 ) -> ReviewStatus:
-    video_id = video.stem
+    video_id = source_id(video, getattr(args, "video_id", None))
     print(f"[{video_id}] extracting audio...")
     wav = extract_audio(video, out_dir / f"{video_id}.wav")
 
@@ -71,7 +88,11 @@ def process_one(
 
 def main() -> int:
     p = argparse.ArgumentParser(description="Speaker attribution pipeline")
-    p.add_argument("input", type=Path, help="video file or directory of videos")
+    p.add_argument("input",
+                   help="video file, directory of videos, or HLS/HTTP stream URL "
+                        "(ffmpeg reads .m3u8 directly — no MP4 download needed)")
+    p.add_argument("--video-id",
+                   help="override the derived video id (useful for stream URLs)")
     p.add_argument("--shotlist", type=Path, help="shotlist/script text file (single video)")
     p.add_argument("--shotlist-dir", type=Path,
                    help="directory with <video_stem>.txt shotlists (batch mode)")
@@ -87,27 +108,30 @@ def main() -> int:
 
     args.out.mkdir(parents=True, exist_ok=True)
 
-    if args.input.is_dir():
-        videos = sorted(v for v in args.input.iterdir() if v.suffix.lower() in VIDEO_EXTS)
+    if is_url(args.input):
+        videos: list[Path | str] = [args.input]
+    elif Path(args.input).is_dir():
+        videos = sorted(v for v in Path(args.input).iterdir()
+                        if v.suffix.lower() in VIDEO_EXTS)
     else:
-        videos = [args.input]
+        videos = [Path(args.input)]
 
     needs_review, failed = [], []
     for video in videos:
         shotlist_path = args.shotlist
         if shotlist_path is None and args.shotlist_dir:
-            candidate = args.shotlist_dir / f"{video.stem}.txt"
+            candidate = args.shotlist_dir / f"{source_id(video)}.txt"
             shotlist_path = candidate if candidate.exists() else None
         try:
             status = process_one(video, shotlist_path, args.out, args)
         except Exception as exc:  # keep the batch going
-            print(f"[{video.stem}] FAILED: {exc}", file=sys.stderr)
-            failed.append(video.stem)
+            print(f"[{source_id(video)}] FAILED: {exc}", file=sys.stderr)
+            failed.append(source_id(video))
             continue
         if status is ReviewStatus.NEEDS_REVIEW:
-            needs_review.append(video.stem)
+            needs_review.append(source_id(video))
         elif status is ReviewStatus.FAILED:
-            failed.append(video.stem)
+            failed.append(source_id(video))
 
     print("\n=== batch summary ===")
     print(f"processed: {len(videos)}, needs review: {needs_review or 'none'}, "

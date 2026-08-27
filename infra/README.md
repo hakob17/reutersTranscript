@@ -75,6 +75,15 @@ Idle cost is ~zero: Batch scales to 0 instances, everything else is
 pay-per-request. Per 6-min video ≈ $0.10–0.20 (GPU minutes + two Claude calls);
 see the cost table in the demo page for the stage breakdown.
 
+## HLS-only sources (no MP4, no source S3)
+
+The GPU task also accepts `VIDEO_URL` (HLS `.m3u8` or any HTTP source) instead
+of `VIDEO_KEY` — ffmpeg extracts audio and OpenCV samples frames straight from
+the stream, so no MP4 export or S3 copy of the source is ever made. For a
+wire feed that can only hand over stream URLs, replace the S3-upload trigger
+with any event carrying `{video_id, video_url}` (EventBridge PutEvents / API)
+into the same state machine; the S3 bucket then holds only pipeline outputs.
+
 ## Notes
 
 - The GPU image bakes model weights at build time; set `HF_HUB_OFFLINE=1` in

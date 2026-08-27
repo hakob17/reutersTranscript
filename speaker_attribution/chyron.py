@@ -263,7 +263,7 @@ def merge_chyrons(
 
 def main() -> int:
     p = argparse.ArgumentParser(description="Name speakers from lower-thirds")
-    p.add_argument("video", type=Path)
+    p.add_argument("video", help="video file or HLS/HTTP stream URL")
     p.add_argument("attribution_json", type=Path,
                    help="existing out/<id>.json from the main pipeline")
     p.add_argument("--out", type=Path, default=Path("out"))
@@ -286,7 +286,7 @@ def main() -> int:
         warnings=list(data.get("warnings", [])),
     )
 
-    print(f"[{result.video_id}] scanning for lower-thirds in {args.video.name}...")
+    print(f"[{result.video_id}] scanning for lower-thirds in {args.video}...")
     sightings, chyron_warnings = read_chyrons(args.video, segments)
     for s in sightings:
         print(f"[{result.video_id}]   {s['label']} @ {s.get('time', 0):.1f}s: "
