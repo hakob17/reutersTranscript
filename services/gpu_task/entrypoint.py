@@ -4,8 +4,10 @@ Runs the compute-heavy, video-local stages and hands everything else to
 Lambdas via S3. One job per video, driven entirely by environment variables
 (set by the Step Functions ContainerOverrides):
 
-  DATA_BUCKET   bucket holding ingest/, work/ and out/ prefixes
-  VIDEO_KEY     s3 key of the source video (ingest/videos/<id>.mp4)
+  DATA_BUCKET   bucket holding work/ and out/ prefixes
+  VIDEO_KEY     s3 key of the source video (ingest/videos/<id>.mp4), OR
+  VIDEO_URL     HLS/HTTP stream URL — read directly by ffmpeg/OpenCV, no
+                MP4 or S3 copy of the source needed (wire-CDN friendly)
   VIDEO_ID      stem used for all derived keys
   WORK_PREFIX   where to write intermediates (work/<id>/)
   HF_TOKEN_SECRET_ARN  Secrets Manager ARN with the HuggingFace token
@@ -39,16 +41,22 @@ def hf_token(secret_arn: str) -> str:
 
 def main() -> int:
     bucket = os.environ["DATA_BUCKET"]
-    video_key = os.environ["VIDEO_KEY"]
+    video_key = os.environ.get("VIDEO_KEY", "")
+    video_url = os.environ.get("VIDEO_URL", "")
     video_id = os.environ["VIDEO_ID"]
     work_prefix = os.environ["WORK_PREFIX"].rstrip("/")
     token = hf_token(os.environ["HF_TOKEN_SECRET_ARN"])
 
     s3 = boto3.client("s3")
     with tempfile.TemporaryDirectory() as td:
-        video = Path(td) / Path(video_key).name
-        print(f"[{video_id}] downloading s3://{bucket}/{video_key}")
-        s3.download_file(bucket, video_key, str(video))
+        if video_url:
+            # HLS/HTTP source: ffmpeg and OpenCV read the stream directly.
+            video: Path | str = video_url
+            print(f"[{video_id}] reading stream {video_url}")
+        else:
+            video = Path(td) / Path(video_key).name
+            print(f"[{video_id}] downloading s3://{bucket}/{video_key}")
+            s3.download_file(bucket, video_key, str(video))
 
         print(f"[{video_id}] extracting audio")
         wav = extract_audio(video, Path(td) / f"{video_id}.wav")

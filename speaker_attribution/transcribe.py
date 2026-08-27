@@ -14,8 +14,9 @@ from .models import Segment
 SAMPLE_RATE = 16_000
 
 
-def extract_audio(video_path: Path, out_wav: Path | None = None) -> Path:
-    """Extract mono 16 kHz WAV from any container ffmpeg understands (incl. HLS)."""
+def extract_audio(video_path: Path | str, out_wav: Path | None = None) -> Path:
+    """Extract mono 16 kHz WAV from any source ffmpeg understands — local
+    files or HTTP(S)/HLS stream URLs (.m3u8) alike; no download step needed."""
     if out_wav is None:
         out_wav = Path(tempfile.mkstemp(suffix=".wav")[1])
     cmd = [
