@@ -1,0 +1,438 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Epstein accusers face harassment — video + transcript</title>
+<style>
+  :root {
+    --bg: #ffffff;
+    --ink: #111111;
+    --muted: #666666;
+    --line: #e6e6e6;
+    --accent: #fa6400;        /* Reuters orange */
+    --active-bg: #fff4ec;
+    --badge-bg: #fdeaea;
+    --badge-ink: #b00020;
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0;
+    background: var(--bg);
+    color: var(--ink);
+    font-family: "Segoe UI", -apple-system, Arial, sans-serif;
+    line-height: 1.5;
+  }
+  .wrap { max-width: 1200px; margin: 0 auto; padding: 24px 20px 60px; }
+  header.masthead {
+    border-bottom: 1px solid var(--line);
+    padding: 14px 0;
+    margin-bottom: 22px;
+    display: flex; align-items: center; gap: 10px;
+  }
+  .brand { font-weight: 700; font-size: 20px; letter-spacing: .2px; }
+  .brand .dot { color: var(--accent); }
+  .vtabs { display: flex; gap: 4px; margin: 0 0 18px; border-bottom: 2px solid var(--line); }
+  .vtab {
+    appearance: none; background: none; border: none; cursor: pointer;
+    font: inherit; font-size: 14px; font-weight: 700; color: var(--muted);
+    padding: 10px 18px; border-bottom: 3px solid transparent; margin-bottom: -2px;
+  }
+  .vtab:hover { color: var(--ink); }
+  .vtab.active { color: var(--ink); border-bottom-color: var(--accent); }
+  .kicker { color: var(--accent); font-size: 12px; font-weight: 700; text-transform: uppercase; letter-spacing: .8px; }
+  h1 { font-size: 28px; line-height: 1.25; margin: 6px 0 4px; font-weight: 700; }
+  .meta { color: var(--muted); font-size: 13px; margin-bottom: 18px; }
+  .badge {
+    display: inline-block; font-size: 11px; font-weight: 700;
+    background: var(--badge-bg); color: var(--badge-ink);
+    border-radius: 3px; padding: 2px 8px; margin-left: 10px;
+    text-transform: uppercase; letter-spacing: .5px; vertical-align: 2px;
+  }
+  .badge[hidden] { display: none; }
+  .layout { display: grid; grid-template-columns: minmax(0, 7fr) minmax(300px, 5fr); gap: 28px; }
+  @media (max-width: 900px) { .layout { grid-template-columns: 1fr; } }
+
+  .player-col .video-frame { position: relative; }
+  .player-col video {
+    width: 100%; display: block; background: #000;
+    border-radius: 4px;
+  }
+  #overlay {
+    position: absolute; left: 0; right: 0; bottom: 44px;
+    display: flex; flex-direction: column; align-items: center;
+    gap: 6px; pointer-events: none;
+    padding: 0 8%;
+    text-align: center;
+  }
+  #overlayName {
+    background: var(--accent); color: #fff;
+    font-size: 13px; font-weight: 700; letter-spacing: .3px;
+    padding: 3px 10px; border-radius: 2px;
+    text-transform: uppercase;
+  }
+  #overlayName .role { font-weight: 400; text-transform: none; opacity: .9; }
+  #overlayText {
+    background: rgba(0,0,0,.75); color: #fff;
+    font-size: 17px; line-height: 1.35;
+    padding: 4px 10px; border-radius: 2px;
+  }
+  #overlay[hidden] { display: none; }
+  #overlayName[hidden], #overlayText[hidden] { display: none; }
+
+  .player-toggles { display: flex; gap: 8px; margin-top: 10px; }
+  .ptoggle {
+    appearance: none; cursor: pointer; font: inherit; font-size: 12.5px;
+    font-weight: 700; letter-spacing: .3px;
+    border: 1px solid var(--line); border-radius: 999px;
+    background: #fafafa; color: var(--muted); padding: 4px 12px;
+  }
+  .ptoggle.on {
+    background: var(--accent); border-color: var(--accent); color: #fff;
+  }
+  .caption { color: var(--muted); font-size: 13px; margin-top: 10px; }
+
+  .transcript-col h2 {
+    font-size: 13px; text-transform: uppercase; letter-spacing: .8px;
+    color: var(--muted); margin: 0 0 10px; font-weight: 700;
+  }
+  #transcript {
+    border-top: 3px solid var(--ink);
+    max-height: 640px; overflow-y: auto;
+  }
+  .seg {
+    padding: 10px 12px;
+    border-bottom: 1px solid var(--line);
+    cursor: pointer;
+  }
+  .seg:hover { background: #fafafa; }
+  .seg.active { background: var(--active-bg); border-left: 3px solid var(--accent); padding-left: 9px; }
+  .seg .who { font-weight: 700; font-size: 13px; }
+  .seg .who .role { color: var(--muted); font-weight: 400; }
+  .seg .t {
+    color: var(--muted); font-size: 12px; font-variant-numeric: tabular-nums;
+    float: right;
+  }
+  .seg .text { margin-top: 2px; font-size: 15px; }
+
+  /* ---- stakeholder brief sections ---- */
+  section.brief { margin-top: 48px; border-top: 3px solid var(--ink); padding-top: 18px; }
+  section.brief > h2 {
+    font-size: 15px; text-transform: uppercase; letter-spacing: .8px;
+    margin: 0 0 14px; font-weight: 700;
+  }
+  .flow { display: flex; flex-wrap: wrap; align-items: stretch; gap: 8px; margin: 14px 0; }
+  .flow .step {
+    flex: 1 1 150px; min-width: 150px;
+    border: 1px solid var(--line); border-top: 3px solid var(--accent);
+    border-radius: 4px; padding: 10px 12px; background: #fafafa;
+  }
+  .flow .step b { display: block; font-size: 13px; margin-bottom: 4px; }
+  .flow .step span { font-size: 12.5px; color: var(--muted); line-height: 1.4; }
+  .flow .arrow { align-self: center; color: var(--muted); font-size: 18px; }
+  .note { font-size: 13px; color: var(--muted); margin: 10px 0 0; }
+  table.facts { border-collapse: collapse; width: 100%; margin-top: 12px; font-size: 14px; }
+  table.facts th, table.facts td {
+    text-align: left; padding: 8px 10px; border-bottom: 1px solid var(--line);
+    vertical-align: top;
+  }
+  table.facts th { font-size: 12px; text-transform: uppercase; letter-spacing: .5px; color: var(--muted); }
+  table.facts td:last-child, table.facts th:last-child { text-align: right; white-space: nowrap; }
+  .total-row td { font-weight: 700; border-top: 2px solid var(--ink); }
+  .cols2 { display: grid; grid-template-columns: 1fr 1fr; gap: 26px; }
+  @media (max-width: 900px) { .cols2 { grid-template-columns: 1fr; } }
+  .aws-list { margin: 8px 0 0; padding-left: 18px; font-size: 14px; }
+  .aws-list li { margin-bottom: 8px; }
+  .aws-list b { font-weight: 700; }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <header class="masthead">
+    <div class="brand">Wire<span class="dot">.</span>Transcript</div>
+  </header>
+
+  <nav class="vtabs" id="vtabs" aria-label="Select video"></nav>
+
+  <div class="kicker" id="kicker"></div>
+  <h1><span id="headline"></span>
+    <span class="badge" id="statusBadge" hidden>needs review</span></h1>
+  <div class="meta" id="meta">Transcript generated by speaker-attribution pipeline</div>
+
+  <div class="layout">
+    <div class="player-col">
+      <div class="video-frame">
+        <video id="video" controls preload="metadata" crossorigin="anonymous"></video>
+        <div id="overlay" hidden>
+          <div id="overlayName"></div>
+          <div id="overlayText"></div>
+        </div>
+      </div>
+      <div class="player-toggles">
+        <button class="ptoggle" id="toggleSubs" aria-pressed="true">Subtitles</button>
+        <button class="ptoggle" id="toggleName" aria-pressed="true">Speaker name</button>
+      </div>
+      <div class="caption" id="caption"></div>
+    </div>
+
+    <div class="transcript-col">
+      <h2>Transcript</h2>
+      <div id="transcript" aria-label="Video transcript"></div>
+    </div>
+  </div>
+
+  <section class="brief">
+    <h2>How the pipeline works</h2>
+    <div class="flow">
+      <div class="step"><b>1 · Ingest</b>
+        <span>Video package (HLS or MP4) + optional editorial shotlist. ffmpeg extracts mono 16&nbsp;kHz audio.</span></div>
+      <div class="arrow">→</div>
+      <div class="step"><b>2 · Transcribe</b>
+        <span>WhisperX (Whisper large-v3 on GPU) produces the transcript with word-level timestamps.</span></div>
+      <div class="arrow">→</div>
+      <div class="step"><b>3 · Diarize</b>
+        <span>pyannote speaker diarization splits the audio into anonymous voices (SPEAKER_00, 01, …).</span></div>
+      <div class="arrow">→</div>
+      <div class="step"><b>4 · Read on-screen names</b>
+        <span>OpenCV locally detects the few frames with lower-third name graphics; only those crops go to Claude vision to be read.</span></div>
+      <div class="arrow">→</div>
+      <div class="step"><b>5 · Attribute</b>
+        <span>Claude merges shotlist, transcript cues and on-screen names into named speakers — with confidence and cited evidence per speaker. It never guesses.</span></div>
+      <div class="arrow">→</div>
+      <div class="step"><b>6 · Publish gate</b>
+        <span>Outputs: WebVTT captions, archive JSON, review transcript. Anything uncertain is flagged <i>needs&nbsp;review</i> for an editor before captions publish.</span></div>
+    </div>
+    <p class="note">Misattribution is the failure mode to avoid, so the system is deliberately conservative:
+      a speaker stays “Unidentified” unless there is hard evidence (self-identification, narrator hand-off,
+      shotlist match, or an on-screen graphic). Every name carries its evidence in the JSON record.</p>
+  </section>
+
+  <section class="brief">
+    <h2>Production proposal — AWS</h2>
+    <div class="cols2">
+      <div>
+        <div class="flow">
+          <div class="step"><b>S3 ingest</b><span>video + shotlist land in a bucket → EventBridge → SQS queue (burst-proof, replayable)</span></div>
+          <div class="arrow">→</div>
+          <div class="step"><b>AWS Batch · GPU</b><span>g6.xlarge (L4) containers, models baked in, scales to zero when idle; Spot cuts GPU cost ~65%</span></div>
+          <div class="arrow">→</div>
+          <div class="step"><b>Lambda · attribution</b><span>Claude via Bedrock/API — no GPU held open during LLM calls</span></div>
+          <div class="arrow">→</div>
+          <div class="step"><b>Review gate</b><span>Step Functions pauses on <i>needs review</i> until an editor approves in the review UI, then captions publish</span></div>
+        </div>
+      </div>
+      <div>
+        <ul class="aws-list">
+          <li><b>Scale-to-zero economics</b> — no warm GPUs overnight; the queue absorbs wire-service bursts and Batch spins capacity up in 2–5 min.</li>
+          <li><b>No runtime dependency on Hugging Face</b> — model weights are baked into the container image at build time (<code>HF_HUB_OFFLINE=1</code>).</li>
+          <li><b>Human-in-the-loop enforced by the workflow</b> — the <i>needs review</i> state is a paused Step Function, not a convention; nothing uncertain publishes on its own.</li>
+          <li><b>Observability</b> — CloudWatch alarms on queue depth, failure rate and the % of videos flagged for review (the early quality-drift signal).</li>
+          <li><b>Secrets</b> — API keys live in Secrets Manager; per-video status in DynamoDB keyed by video ID (idempotent re-runs).</li>
+        </ul>
+      </div>
+    </div>
+  </section>
+
+  <section class="brief">
+    <h2>Time &amp; cost per video <span style="font-weight:400;color:var(--muted)">(measured on this 6-min package, 1080p)</span></h2>
+    <table class="facts">
+      <thead><tr><th>Stage</th><th>Where it runs</th><th>Approx. time</th><th>Approx. cost</th></tr></thead>
+      <tbody>
+        <tr><td>Audio extraction (ffmpeg)</td><td>GPU worker (CPU part)</td><td>~5 s</td><td>—</td></tr>
+        <tr><td>Transcription + alignment (Whisper large-v3)</td><td>GPU (L4 / measured on RTX 4090)</td><td>~1–2 min</td><td rowspan="2">$0.05–0.08 on-demand<br>(~$0.02–0.03 Spot)</td></tr>
+        <tr><td>Speaker diarization (pyannote)</td><td>GPU</td><td>~1 min</td></tr>
+        <tr><td>Lower-third detection (OpenCV)</td><td>GPU worker (CPU part)</td><td>~20 s</td><td>—</td></tr>
+        <tr><td>Reading name graphics (Claude vision, ≤16 crops)</td><td>Claude API</td><td>~15 s</td><td>$0.03–0.06</td></tr>
+        <tr><td>Speaker attribution (Claude)</td><td>Claude API</td><td>~20 s</td><td>$0.02–0.05</td></tr>
+        <tr><td>Outputs + orchestration (S3, Lambda, Step Functions)</td><td>AWS serverless</td><td>~5 s</td><td>&lt; $0.01</td></tr>
+        <tr class="total-row"><td>Total per video</td><td></td><td>≈ 3–5 min</td><td>≈ $0.10–0.20</td></tr>
+      </tbody>
+    </table>
+    <p class="note">Costs scale with video length roughly linearly on the GPU stages and stay nearly flat on the
+      LLM stages (the OpenCV pre-filter caps how many frames ever reach the vision model). Idle cost is zero —
+      compute exists only while a video is processing. First run per worker adds a one-time model download
+      unless weights are baked into the image (recommended).</p>
+  </section>
+</div>
+
+<script>
+// Tabs shown in the switcher, in order. Add an entry per processed video.
+const TABS = [
+  { id: 'epstein_778738', label: 'Reuters' },
+  { id: '782809', label: 'Insurer' },
+];
+
+// Per-video presentation.
+const META = {
+  'epstein_778738': {
+    kicker: 'United States',
+    headline: 'Epstein accusers face new waves of harassment after speaking out',
+    caption: 'Accusers of the late sex offender Jeffrey Epstein describe online abuse and ' +
+      'real-life harassment after speaking out. Speaker labels are machine-generated and ' +
+      'pending editorial review.',
+  },
+  '782809': {
+    kicker: 'Insurer TV · News in Focus',
+    headline: 'Tuio CEO: AI more a threat to brokers for personal lines than commercial',
+    caption: 'Tuio co-founder and CEO Juan Garcia talks to The Insurer about where AI ' +
+      'pressure will hit broking first. Speaker labels are machine-generated and ' +
+      'pending editorial review.',
+  },
+};
+
+const SOURCES = {"epstein_778738": "https://ajo.prod.reuters.tv/v3/playlist/1920x1080/778738/rendition.m3u8", "782809": "https://ajo.prod.reuters.tv/v3/playlist/782809/master.m3u8"}; // packed
+const DATA = {"epstein_778738": {"video_id": "epstein_778738", "status": "needs_review", "warnings": ["No shotlist or script was provided; all mappings rely solely on internal transcript cues.", "No byline was provided, so the narrator (SPEAKER_03) cannot be named.", "SPEAKER_06 is tentatively associated with 'Bensky' based on narrative context but confidence is low due to lack of explicit identification.", "SPEAKER_00 and SPEAKER_04 could not be identified with any confidence.", "chyron: Frames at 136.9s, 326.9s, 300.5s, 12.8s, 164.0s, 341.2s, 66.4s, 81.3s, 38.2s, 244.4s and 4.2s show no lower-third name graphic (only location/date slates, desk nameplates, advisory banner or graphics).", "chyron: No lower-third name graphics visible in any of the supplied crops; frames show phone screenshots, bank documents, hearing-room nameplates and B-roll only.", "chyron: Nameplates at 262.0s and 266.0s ('DANI HANNAH BENSKY', '...A-LISA JONES', 'ROZA') are hearing-table placards, not chyrons naming the current speaker, so they were not reported.", "Low/medium confidence mappings: ['SPEAKER_00', 'SPEAKER_04', 'SPEAKER_06']", "Unidentified speakers: ['SPEAKER_00', 'SPEAKER_03', 'SPEAKER_04', 'SPEAKER_06']"], "speakers": {"SPEAKER_00": {"label": "SPEAKER_00", "name": "Unidentified", "role": "Unidentified speaker commenting on Epstein files", "confidence": "low", "evidence": "No shotlist or script provided to match this speaker's quote ('These stories are both horrific and outrageous') to a named individual."}, "SPEAKER_01": {"label": "SPEAKER_01", "name": "Pam Bondi", "role": "Former U.S. Attorney General", "confidence": "high", "evidence": "Transcript narration at [328.44] identifies 'Former Attorney General Pam Bondi acknowledged redaction errors' immediately after SPEAKER_01 says 'Of course, we don't want any victim to be further victimized,' directly attributing the quote to Bondi."}, "SPEAKER_02": {"label": "SPEAKER_02", "name": "Haley Robson", "role": "Accuser", "confidence": "high", "evidence": "On-screen lower-third at 21.9s reads 'Haley Robson, Accuser'"}, "SPEAKER_03": {"label": "SPEAKER_03", "name": "Unidentified", "role": "Reporter/Narrator", "confidence": "high", "evidence": "SPEAKER_03 delivers all narration segments describing events, DOJ actions, and contextualizing other speakers, consistent with a reporter voiceover role; no byline name is provided so name remains unidentified."}, "SPEAKER_04": {"label": "SPEAKER_04", "name": "Unidentified", "role": "Congressional questioner", "confidence": "low", "evidence": "SPEAKER_04 says 'Mr. Attorney General, I wanted to ask a few questions' in a congressional hearing context; no shotlist or script identifies this person by name."}, "SPEAKER_05": {"label": "SPEAKER_05", "name": "Marina Lacerda", "role": "Epstein accuser", "confidence": "high", "evidence": "SPEAKER_05 self-identifies at [65.82]: 'My name is Marina Lacerda,' and subsequent quotes match the narrator's attribution of remarks to Lacerda at [88.79]."}, "SPEAKER_06": {"label": "SPEAKER_06", "name": "Unidentified", "role": "Epstein accuser (likely Bensky)", "confidence": "low", "evidence": "Narrator at [253.51] references 'Bensky' reporting a threatening Facebook message, and SPEAKER_06 describes that exact threatening message at [234.01-252.54], suggesting this may be Bensky, but no first name or full identification is confirmed in the provided materials."}, "SPEAKER_07": {"label": "SPEAKER_07", "name": "Jena-Lisa Jones", "role": "Accuser", "confidence": "high", "evidence": "On-screen lower-third at 6.5s reads 'Jena-Lisa Jones, Accuser'"}}, "segments": [{"start": 2.654, "end": 10.298, "speaker_label": "SPEAKER_07", "speaker": "Jena-Lisa Jones, Accuser", "language": "en", "text": "I put myself out there on one of the most horrific things that happened to me, you know, when I was younger and trying to do the right thing."}, {"start": 11.278, "end": 19.682, "speaker_label": "SPEAKER_03", "speaker": "Unidentified, Reporter/Narrator", "language": "en", "text": "Accusers of the late sex offender Jeffrey Epstein are living through new waves of online abuse and real-life harassment after speaking out."}, {"start": 20.442, "end": 27.366, "speaker_label": "SPEAKER_02", "speaker": "Haley Robson, Accuser", "language": "en", "text": "I stayed home for majority of the time that we were all public in September and November when we went to the Capitol."}, {"start": 27.946, "end": 36.158, "speaker_label": "SPEAKER_03", "speaker": "Unidentified, Reporter/Narrator", "language": "en", "text": "For some, intimidation began after the U.S. Justice Department exposed their identities in its release of millions of pages of Epstein files."}, {"start": 36.659, "end": 40.745, "speaker_label": "SPEAKER_06", "speaker": "Unidentified, Epstein accuser (likely Bensky)", "language": "en", "text": "When the files first came out, I didn't think that I'd be able to search my name."}, {"start": 40.925, "end": 43.629, "speaker_label": "SPEAKER_06", "speaker": "Unidentified, Epstein accuser (likely Bensky)", "language": "en", "text": "And there were, you know, a multitude of things that came up."}, {"start": 44.39, "end": 51.797, "speaker_label": "SPEAKER_03", "speaker": "Unidentified, Reporter/Narrator", "language": "en", "text": "These women are among nearly two dozen Epstein accusers Reuters found who've been subjected to threats, harassment, and intimidation."}, {"start": 52.378, "end": 63.308, "speaker_label": "SPEAKER_03", "speaker": "Unidentified, Reporter/Narrator", "language": "en", "text": "Based on interviews with the women and a review of police and court records and thousands of online posts, it is the most comprehensive review to date of the scope and severity of the attacks."}, {"start": 65.816, "end": 67.077, "speaker_label": "SPEAKER_05", "speaker": "Marina Lacerda, Epstein accuser", "language": "en", "text": "My name is Marina Lacerda."}, {"start": 67.657, "end": 72.141, "speaker_label": "SPEAKER_03", "speaker": "Unidentified, Reporter/Narrator", "language": "en", "text": "For some, the harassment began after a September news conference outside the U.S. Capitol."}, {"start": 72.541, "end": 77.685, "speaker_label": "SPEAKER_03", "speaker": "Unidentified, Reporter/Narrator", "language": "en", "text": "Survivors were lobbying for the federal government to release the full investigative files tied to Epstein."}, {"start": 78.405, "end": 84.15, "speaker_label": "SPEAKER_05", "speaker": "Marina Lacerda, Epstein accuser", "language": "en", "text": "I was one of a dozen of girls that I personally know who were forced into Jeffrey's mansion when we were just kids."}, {"start": 85.13, "end": 87.692, "speaker_label": "SPEAKER_03", "speaker": "Unidentified, Reporter/Narrator", "language": "en", "text": "They hoped their remarks would lead to accountability."}, {"start": 88.793, "end": 93.577, "speaker_label": "SPEAKER_03", "speaker": "Unidentified, Reporter/Narrator", "language": "en", "text": "Instead, Marina Lacerda and Jenalisa Jones became targets of online abuse."}, {"start": 94.686, "end": 96.407, "speaker_label": "SPEAKER_05", "speaker": "Marina Lacerda, Epstein accuser", "language": "en", "text": "People were calling me a liar."}, {"start": 96.867, "end": 99.069, "speaker_label": "SPEAKER_05", "speaker": "Marina Lacerda, Epstein accuser", "language": "en", "text": "People were saying that I was a prostitute."}, {"start": 99.109, "end": 101.01, "speaker_label": "SPEAKER_05", "speaker": "Marina Lacerda, Epstein accuser", "language": "en", "text": "People were like, you should have known better."}, {"start": 101.911, "end": 106.133, "speaker_label": "SPEAKER_05", "speaker": "Marina Lacerda, Epstein accuser", "language": "en", "text": "People were just dehumanizing the whole situation."}, {"start": 106.714, "end": 109.716, "speaker_label": "SPEAKER_05", "speaker": "Marina Lacerda, Epstein accuser", "language": "en", "text": "And I was like, wow, what's wrong with people?"}, {"start": 109.776, "end": 111.697, "speaker_label": "SPEAKER_07", "speaker": "Jena-Lisa Jones, Accuser", "language": "en", "text": "Like, I was 14 years old."}, {"start": 112.798, "end": 119.242, "speaker_label": "SPEAKER_07", "speaker": "Jena-Lisa Jones, Accuser", "language": "en", "text": "To have people that I feel like have no time in their lives for anything else to harass me, it's just..."}, {"start": 120.879, "end": 124.841, "speaker_label": "SPEAKER_07", "speaker": "Jena-Lisa Jones, Accuser", "language": "en", "text": "I don't think I'll ever understand when you harass someone that's been sexually assaulted."}, {"start": 125.641, "end": 134.386, "speaker_label": "SPEAKER_03", "speaker": "Unidentified, Reporter/Narrator", "language": "en", "text": "The attacks escalated after the DOJ exposed victims' personal information in December and January, when it posted Epstein-related files with redaction errors."}, {"start": 135.366, "end": 138.848, "speaker_label": "SPEAKER_00", "speaker": "Unidentified, Unidentified speaker commenting on Epstein files", "language": "en", "text": "These stories are both horrific and outrageous."}, {"start": 139.425, "end": 143.047, "speaker_label": "SPEAKER_03", "speaker": "Unidentified, Reporter/Narrator", "language": "en", "text": "Congress had passed a law in November ordering the release of the records."}, {"start": 143.908, "end": 153.754, "speaker_label": "SPEAKER_03", "speaker": "Unidentified, Reporter/Narrator", "language": "en", "text": "In thousands of instances, accusers' names, addresses, phone numbers, birth dates, photos, or other personal details were left unredacted, at times repeatedly."}, {"start": 154.235, "end": 156.056, "speaker_label": "SPEAKER_03", "speaker": "Unidentified, Reporter/Narrator", "language": "en", "text": "Lacerda's name appeared at least 46 times."}, {"start": 157.817, "end": 170.126, "speaker_label": "SPEAKER_03", "speaker": "Unidentified, Reporter/Narrator", "language": "en", "text": "In a review of the Epstein files and emails sent to the DOJ by the women's lawyers, Reuters determined that when missed redactions were flagged to the department, personal information remained visible, sometimes for months."}, {"start": 170.907, "end": 176.891, "speaker_label": "SPEAKER_03", "speaker": "Unidentified, Reporter/Narrator", "language": "en", "text": "A Justice Department spokesperson told Reuters that no victim should face harassment threats or intimidation after coming forward."}, {"start": 177.472, "end": 185.798, "speaker_label": "SPEAKER_03", "speaker": "Unidentified, Reporter/Narrator", "language": "en", "text": "But they added that the department is, quote, not to blame for backlash directed at victims who voluntarily revealed their identities long before the files were published."}, {"start": 186.314, "end": 192.576, "speaker_label": "SPEAKER_06", "speaker": "Unidentified, Epstein accuser (likely Bensky)", "language": "en", "text": "It's really sensitive information that was supposed to be between me and the FBI, and now it's just all there."}, {"start": 192.596, "end": 197.638, "speaker_label": "SPEAKER_06", "speaker": "Unidentified, Epstein accuser (likely Bensky)", "language": "en", "text": "You know, there's that sinking feeling in that pit in your stomach that's like none of this should be there."}, {"start": 197.938, "end": 204.86, "speaker_label": "SPEAKER_03", "speaker": "Unidentified, Reporter/Narrator", "language": "en", "text": "Some of the women have endured intimidating incidents at their homes and describe living in a state of constant hypervigilance."}, {"start": 205.811, "end": 212.095, "speaker_label": "SPEAKER_03", "speaker": "Unidentified, Reporter/Narrator", "language": "en", "text": "They ranged from a stranger photographing women's houses to suspicious cars lingering outside and fleeing when confronted."}, {"start": 212.896, "end": 222.582, "speaker_label": "SPEAKER_03", "speaker": "Unidentified, Reporter/Narrator", "language": "en", "text": "At least 10 of the women interviewed by Reuters said they now own weapons, including guns, tasers, pepper spray or knives, or use armed security for protection."}, {"start": 223.463, "end": 229.087, "speaker_label": "SPEAKER_07", "speaker": "Jena-Lisa Jones, Accuser", "language": "en", "text": "I typically carry a gun depending on situations and where I'm going, but we always have them in the house."}, {"start": 230.067, "end": 233.55, "speaker_label": "SPEAKER_03", "speaker": "Unidentified, Reporter/Narrator", "language": "en", "text": "Others recounted repeated harassing phone calls and threats of violence."}, {"start": 234.006, "end": 236.207, "speaker_label": "SPEAKER_06", "speaker": "Unidentified, Epstein accuser (likely Bensky)", "language": "en", "text": "There was one in particular that really did scare me."}, {"start": 236.287, "end": 252.538, "speaker_label": "SPEAKER_06", "speaker": "Unidentified, Epstein accuser (likely Bensky)", "language": "en", "text": "It was this man that had, it was a picture of him holding a rifle, an assault rifle, and it had language in it that I won't repeat because it was brutal, but basically that I don't deserve to be alive and that I need to stand down."}, {"start": 253.509, "end": 258.833, "speaker_label": "SPEAKER_03", "speaker": "Unidentified, Reporter/Narrator", "language": "en", "text": "After Bensky reported the threatening message to Facebook, the account was taken down for violating its policies."}, {"start": 259.433, "end": 262.675, "speaker_label": "SPEAKER_03", "speaker": "Unidentified, Reporter/Narrator", "language": "en", "text": "At least four women reported threats and harassment to police."}, {"start": 263.135, "end": 272.341, "speaker_label": "SPEAKER_03", "speaker": "Unidentified, Reporter/Narrator", "language": "en", "text": "But the cases didn't lead to prosecutions, because authorities couldn't identify suspects or determine whether a crime had occurred, according to the women and police records reviewed by Reuters."}, {"start": 273.478, "end": 276.582, "speaker_label": "SPEAKER_03", "speaker": "Unidentified, Reporter/Narrator", "language": "en", "text": "One case remains under active investigation, police said."}, {"start": 276.922, "end": 285.411, "speaker_label": "SPEAKER_03", "speaker": "Unidentified, Reporter/Narrator", "language": "en", "text": "Other women said they chose not to contact law enforcement, citing distrust rooted in what they saw as past failures to act on abuse claims."}, {"start": 286.305, "end": 290.847, "speaker_label": "SPEAKER_03", "speaker": "Unidentified, Reporter/Narrator", "language": "en", "text": "They say the fear has triggered depression, crippling anxiety and insomnia."}, {"start": 291.588, "end": 295.069, "speaker_label": "SPEAKER_02", "speaker": "Haley Robson, Accuser", "language": "en", "text": "To feel unsafe in your own home is a different kind of trauma."}, {"start": 295.53, "end": 305.535, "speaker_label": "SPEAKER_02", "speaker": "Haley Robson, Accuser", "language": "en", "text": "When you don't even feel safe sleeping in your own bed, you don't even, like you can't even calm your cortisol or your anxiety enough to talk yourself off the ledge."}, {"start": 306.695, "end": 316.519, "speaker_label": "SPEAKER_03", "speaker": "Unidentified, Reporter/Narrator", "language": "en", "text": "About $425 million have been paid out to victims through a compensation fund and settlements with Epstein's estate and banks accused of facilitating his abuse."}, {"start": 317.439, "end": 322.701, "speaker_label": "SPEAKER_03", "speaker": "Unidentified, Reporter/Narrator", "language": "en", "text": "He died in a Manhattan jail cell in 2019, awaiting trial on sex trafficking charges."}, {"start": 323.121, "end": 324.742, "speaker_label": "SPEAKER_03", "speaker": "Unidentified, Reporter/Narrator", "language": "en", "text": "His death was ruled a suicide."}, {"start": 325.377, "end": 328.361, "speaker_label": "SPEAKER_01", "speaker": "Pam Bondi, Former U.S. Attorney General", "language": "en", "text": "Of course, we don't want any victim to be further victimized."}, {"start": 328.441, "end": 333.589, "speaker_label": "SPEAKER_03", "speaker": "Unidentified, Reporter/Narrator", "language": "en", "text": "Former Attorney General Pam Bondi acknowledged redaction errors in a May 29th testimony to Congress."}, {"start": 334.37, "end": 339.177, "speaker_label": "SPEAKER_03", "speaker": "Unidentified, Reporter/Narrator", "language": "en", "text": "She said she had delegated responsibility for releasing the documents to her then-deputy, Todd Blanche."}, {"start": 339.91, "end": 342.572, "speaker_label": "SPEAKER_04", "speaker": "Unidentified, Congressional questioner", "language": "en", "text": "Mr. Attorney General, I wanted to ask a few questions."}, {"start": 342.892, "end": 352.959, "speaker_label": "SPEAKER_03", "speaker": "Unidentified, Reporter/Narrator", "language": "en", "text": "Testifying before a congressional committee earlier in May, Acting Attorney General Blanche said that any time you release a victim's name that shouldn't be released, we have failed as a Department of Justice."}, {"start": 353.84, "end": 365.768, "speaker_label": "SPEAKER_03", "speaker": "Unidentified, Reporter/Narrator", "language": "en", "text": "The DOJ spokesperson told Reuters it takes victim redaction seriously and that when personal information is found to be unredacted, quote, our team swiftly fixes the issue and republishes the appropriately redacted pages."}, {"start": 366.906, "end": 375.533, "speaker_label": "SPEAKER_03", "speaker": "Unidentified, Reporter/Narrator", "language": "en", "text": "Meanwhile, the accusers face a fraught calculation, whether speaking out in search of justice is worth the potential exposure to further harm."}]}, "782809": {"video_id": "782809", "status": "auto_ok", "warnings": [], "speakers": {"SPEAKER_01": {"label": "SPEAKER_01", "name": "Michael Loney", "role": "North America Editor, The Insurer", "confidence": "high", "evidence": "Dual-name lower-third at 13.5s lists Juan Garcia (Co-Founder/CEO, Tuio) and Michael Loney (North America Editor, The Insurer); SPEAKER_00 is confidently Garcia from transcript evidence, so the interviewer is Loney by elimination. Confirmed in human review 2026-08-27."}, "SPEAKER_00": {"label": "SPEAKER_00", "name": "Juan Garcia", "role": "Co-founder and CEO of Tuio", "confidence": "high", "evidence": "SPEAKER_01 explicitly introduces the interviewee as 'Juan Garcia, who's the co-founder and CEO of Tuio'; SPEAKER_00 answers all subsequent questions in that role, including detailed discussion of Tuio's ChatGPT app, product lines, and expansion plans, and is addressed as 'Juan' near the end of the interview."}}, "segments": [{"start": 3.115, "end": 10.838, "speaker_label": "SPEAKER_01", "speaker": "Michael Loney, North America Editor, The Insurer", "language": "en", "text": "I'm at the Reuters Future of Insurance event in Chicago, and I'm now joined by Juan Garcia, who's the co-founder and CEO of Tuio, which is a Spanish insurtech."}, {"start": 11.118, "end": 11.679, "speaker_label": "SPEAKER_01", "speaker": "Michael Loney, North America Editor, The Insurer", "language": "en", "text": "Happy to be here."}, {"start": 12.419, "end": 22.123, "speaker_label": "SPEAKER_01", "speaker": "Michael Loney, North America Editor, The Insurer", "language": "en", "text": "Juan, you found yourself part of an interesting story earlier this year, in February, when Tuio became the first insurance provider with an approved application on ChatGP2."}, {"start": 23.583, "end": 31.847, "speaker_label": "SPEAKER_01", "speaker": "Michael Loney, North America Editor, The Insurer", "language": "en", "text": "That kind of seemed to lead to a bit of a sell-off of public brokers' shares amidst kind of fears around what impact AI would have on that."}, {"start": 32.307, "end": 35.308, "speaker_label": "SPEAKER_01", "speaker": "Michael Loney, North America Editor, The Insurer", "language": "en", "text": "Give us a little flavour of what was it like to be involved in that?"}, {"start": 35.568, "end": 36.909, "speaker_label": "SPEAKER_00", "speaker": "Juan Garcia, Co-founder and CEO of Tuio", "language": "en", "text": "That was interesting indeed."}, {"start": 37.189, "end": 40.91, "speaker_label": "SPEAKER_00", "speaker": "Juan Garcia, Co-founder and CEO of Tuio", "language": "en", "text": "So we released the app because we saw that"}, {"start": 42.371, "end": 71.878, "speaker_label": "SPEAKER_00", "speaker": "Juan Garcia, Co-founder and CEO of Tuio", "language": "en", "text": "new customers coming from from declaring that they came from they got to know us from lms they was growing 50 month over month so we just thought like oh maybe we could be we should do this because becoming a relevant challenge for us and um we released a pr note on monday and then on tuesday i woke up to one of my co-founders sending me a look at this tweet that i had with something to do with a self in the big brokers and then i was going to tweet and 39 billions of lost enterprise value in the biggest brokers and insurers in the us i was like"}, {"start": 72.818, "end": 75.98, "speaker_label": "SPEAKER_00", "speaker": "Juan Garcia, Co-founder and CEO of Tuio", "language": "en", "text": "So maybe I shouldn't go out today if I don't want to be stopped."}, {"start": 76.02, "end": 77.261, "speaker_label": "SPEAKER_00", "speaker": "Juan Garcia, Co-founder and CEO of Tuio", "language": "en", "text": "No, just kidding."}, {"start": 77.521, "end": 92.271, "speaker_label": "SPEAKER_00", "speaker": "Juan Garcia, Co-founder and CEO of Tuio", "language": "en", "text": "But yeah, I started looking into that and then I just saw that Goldman Sachs had released an equity research note and that showed that we were the first insurance provider that was on the Chattopaddy marketplace."}, {"start": 94.452, "end": 98.756, "speaker_label": "SPEAKER_00", "speaker": "Juan Garcia, Co-founder and CEO of Tuio", "language": "en", "text": "It actually did produce a sell-off on the market."}, {"start": 98.776, "end": 104.14, "speaker_label": "SPEAKER_00", "speaker": "Juan Garcia, Co-founder and CEO of Tuio", "language": "en", "text": "That was an interesting time because even the sell-off was for commercial lines, not even personal lines."}, {"start": 104.16, "end": 104.741, "speaker_label": "SPEAKER_00", "speaker": "Juan Garcia, Co-founder and CEO of Tuio", "language": "en", "text": "That's what we do."}, {"start": 105.441, "end": 115.77, "speaker_label": "SPEAKER_00", "speaker": "Juan Garcia, Co-founder and CEO of Tuio", "language": "en", "text": "So yeah, probably showing that there are concerns on the role of intermediaries in insurance and in probably any other market."}, {"start": 117.311, "end": 120.673, "speaker_label": "SPEAKER_00", "speaker": "Juan Garcia, Co-founder and CEO of Tuio", "language": "en", "text": "probably has more to do with those concerns rather than our app."}, {"start": 120.713, "end": 121.754, "speaker_label": "SPEAKER_01", "speaker": "Michael Loney, North America Editor, The Insurer", "language": "en", "text": "Sure, sure."}, {"start": 122.074, "end": 128.917, "speaker_label": "SPEAKER_01", "speaker": "Michael Loney, North America Editor, The Insurer", "language": "en", "text": "You know, obviously brokers have been kind of quick to allay those fears and, you know, stress that they don't see themselves being disintermediated."}, {"start": 129.818, "end": 133.92, "speaker_label": "SPEAKER_01", "speaker": "Michael Loney, North America Editor, The Insurer", "language": "en", "text": "But what's your kind of take on, how do you see the broking space evolving as a result of AI?"}, {"start": 134.02, "end": 143.646, "speaker_label": "SPEAKER_00", "speaker": "Juan Garcia, Co-founder and CEO of Tuio", "language": "en", "text": "So it's probably going to be, I would be more worried if I was doing personal lines than I would be if I was doing commercial lines, or at least that was the core of my business, obviously, because commercial lines,"}, {"start": 144.686, "end": 151.568, "speaker_label": "SPEAKER_00", "speaker": "Juan Garcia, Co-founder and CEO of Tuio", "language": "en", "text": "I don't see it being fully disintermediated anytime soon because that's a very complex, very relation-based business."}, {"start": 151.608, "end": 159.891, "speaker_label": "SPEAKER_00", "speaker": "Juan Garcia, Co-founder and CEO of Tuio", "language": "en", "text": "So if you run an old company, probably you wouldn't want to get your insurance policies from ChatGPT, I would say, I would believe."}, {"start": 161.291, "end": 164.133, "speaker_label": "SPEAKER_00", "speaker": "Juan Garcia, Co-founder and CEO of Tuio", "language": "en", "text": "Personal lines though, it's a bit of a different story."}, {"start": 166.014, "end": 179.88, "speaker_label": "SPEAKER_00", "speaker": "Juan Garcia, Co-founder and CEO of Tuio", "language": "en", "text": "When you see what a chat GPT conversation does, it's pretty close to advisory even though it's not really because it's getting all this information from the internet or from provider-based databases, but it's very close to what a normal broker would do."}, {"start": 180.52, "end": 208.126, "speaker_label": "SPEAKER_00", "speaker": "Juan Garcia, Co-founder and CEO of Tuio", "language": "en", "text": "so that there i would i would be worried about what my role in those personal lines business are um commercial lines probably just need to adopt two different tools to do your role better but i don't see any i don't see it being disintimidated any time soon um yeah obviously um you you were the first but like others have announced kind of chapter gpt related uh kind of initiatives since then how far along do you sense the insure the industry is along you know on that journey we've had a lot of"}, {"start": 209.326, "end": 212.088, "speaker_label": "SPEAKER_00", "speaker": "Juan Garcia, Co-founder and CEO of Tuio", "language": "en", "text": "conversations with insurers in this past four months."}, {"start": 212.468, "end": 220.153, "speaker_label": "SPEAKER_00", "speaker": "Juan Garcia, Co-founder and CEO of Tuio", "language": "en", "text": "Everyone is very interested to see what's happening because probably maybe they don't see it as clearly as we do because we can track everything very easily ourselves."}, {"start": 220.173, "end": 230.939, "speaker_label": "SPEAKER_00", "speaker": "Juan Garcia, Co-founder and CEO of Tuio", "language": "en", "text": "We're a direct company and some others have brokers between them and the customers, but probably everybody is seeing what we're seeing and it's going to be a very important channel for everybody in the future, especially for insurance."}, {"start": 231.499, "end": 233.361, "speaker_label": "SPEAKER_00", "speaker": "Juan Garcia, Co-founder and CEO of Tuio", "language": "en", "text": "Probably not only a commercial channel, probably"}, {"start": 234.261, "end": 241.332, "speaker_label": "SPEAKER_00", "speaker": "Juan Garcia, Co-founder and CEO of Tuio", "language": "en", "text": "We think customers are going to want to deal with the policies through a chat GPT or an agent."}, {"start": 241.412, "end": 246.259, "speaker_label": "SPEAKER_00", "speaker": "Juan Garcia, Co-founder and CEO of Tuio", "language": "en", "text": "We do have not only the agent on chat GPT, but also on WhatsApp and everything."}, {"start": 246.279, "end": 246.96, "speaker_label": "SPEAKER_00", "speaker": "Juan Garcia, Co-founder and CEO of Tuio", "language": "en", "text": "It's the same agent."}, {"start": 249.864, "end": 258.173, "speaker_label": "SPEAKER_00", "speaker": "Juan Garcia, Co-founder and CEO of Tuio", "language": "en", "text": "We've definitely seen a lot of interest from established companies, but we've also seen that they don't really know where to start from."}, {"start": 258.593, "end": 259.534, "speaker_label": "SPEAKER_00", "speaker": "Juan Garcia, Co-founder and CEO of Tuio", "language": "en", "text": "Is this a commercial channel?"}, {"start": 259.594, "end": 260.715, "speaker_label": "SPEAKER_00", "speaker": "Juan Garcia, Co-founder and CEO of Tuio", "language": "en", "text": "Is it an operational channel?"}, {"start": 261.336, "end": 265.841, "speaker_label": "SPEAKER_00", "speaker": "Juan Garcia, Co-founder and CEO of Tuio", "language": "en", "text": "How do I embed this in my company with my existing processes?"}, {"start": 266.381, "end": 267.642, "speaker_label": "SPEAKER_00", "speaker": "Juan Garcia, Co-founder and CEO of Tuio", "language": "en", "text": "So we see a lot of interest."}, {"start": 268.463, "end": 270.025, "speaker_label": "SPEAKER_00", "speaker": "Juan Garcia, Co-founder and CEO of Tuio", "language": "en", "text": "We see a lot of uncertainty as well."}, {"start": 270.105, "end": 272.927, "speaker_label": "SPEAKER_01", "speaker": "Michael Loney, North America Editor, The Insurer", "language": "en", "text": "Yeah, I guess there's a mind shift, I guess, for the established players."}, {"start": 272.967, "end": 278.091, "speaker_label": "SPEAKER_01", "speaker": "Michael Loney, North America Editor, The Insurer", "language": "en", "text": "But tell us a bit more then about Tiro's model, your personal lines focus."}, {"start": 278.111, "end": 280.372, "speaker_label": "SPEAKER_01", "speaker": "Michael Loney, North America Editor, The Insurer", "language": "en", "text": "What lines are you in and are there plans for expansion?"}, {"start": 280.572, "end": 286.917, "speaker_label": "SPEAKER_00", "speaker": "Juan Garcia, Co-founder and CEO of Tuio", "language": "en", "text": "We're currently in homeowners insurance, which is our biggest, the initial product we launched and our biggest product so far."}, {"start": 287.397, "end": 293.401, "speaker_label": "SPEAKER_00", "speaker": "Juan Garcia, Co-founder and CEO of Tuio", "language": "en", "text": "We've launched also life insurance because obviously it's very close to homeowners insurance because of the mortgage and all that."}, {"start": 293.821, "end": 296.123, "speaker_label": "SPEAKER_00", "speaker": "Juan Garcia, Co-founder and CEO of Tuio", "language": "en", "text": "We've recently launched car insurance so we can bundle."}, {"start": 296.283, "end": 298.925, "speaker_label": "SPEAKER_00", "speaker": "Juan Garcia, Co-founder and CEO of Tuio", "language": "en", "text": "I mean, those are the three main lines in Spain."}, {"start": 299.605, "end": 304.77, "speaker_label": "SPEAKER_00", "speaker": "Juan Garcia, Co-founder and CEO of Tuio", "language": "en", "text": "But we will be also launching pet health insurance and also travel insurance."}, {"start": 305.371, "end": 315.9, "speaker_label": "SPEAKER_00", "speaker": "Juan Garcia, Co-founder and CEO of Tuio", "language": "en", "text": "Travel is a bit of a weird choice, but we think that we need to put our value proposition in front of customers in a very non-committal way because obviously to just"}, {"start": 316.961, "end": 328.13, "speaker_label": "SPEAKER_00", "speaker": "Juan Garcia, Co-founder and CEO of Tuio", "language": "en", "text": "let your insurance policy of your house or your car, which are your most valuable possessions, for a new company like ours, it's maybe too big of a step for the existing market."}, {"start": 328.53, "end": 345.704, "speaker_label": "SPEAKER_00", "speaker": "Juan Garcia, Co-founder and CEO of Tuio", "language": "en", "text": "So through travel, we can show that we're a bit different, we have a distinct value proposition, self-service digital, but we are a trustable company, so you can let us in charge of your policies for your most valuable positions."}, {"start": 346.665, "end": 349.766, "speaker_label": "SPEAKER_00", "speaker": "Juan Garcia, Co-founder and CEO of Tuio", "language": "en", "text": "And then that's probably 2026."}, {"start": 349.786, "end": 352.527, "speaker_label": "SPEAKER_00", "speaker": "Juan Garcia, Co-founder and CEO of Tuio", "language": "en", "text": "2027 will be when we exit."}, {"start": 352.887, "end": 355.147, "speaker_label": "SPEAKER_00", "speaker": "Juan Garcia, Co-founder and CEO of Tuio", "language": "en", "text": "We move from Spain towards Southern Europe."}, {"start": 355.187, "end": 356.788, "speaker_label": "SPEAKER_00", "speaker": "Juan Garcia, Co-founder and CEO of Tuio", "language": "en", "text": "That's our view."}, {"start": 357.328, "end": 372.032, "speaker_label": "SPEAKER_00", "speaker": "Juan Garcia, Co-founder and CEO of Tuio", "language": "en", "text": "We see a possibility to be the leading insurer in Southern Europe, where we don't see a value proposition such as ours in Portugal, Italy, France, probably Greece, further down the road."}, {"start": 373.852, "end": 375.433, "speaker_label": "SPEAKER_01", "speaker": "Michael Loney, North America Editor, The Insurer", "language": "en", "text": "And yeah, there's going to be interesting years."}, {"start": 375.673, "end": 375.873, "speaker_label": "SPEAKER_01", "speaker": "Michael Loney, North America Editor, The Insurer", "language": "en", "text": "Right."}, {"start": 376.073, "end": 377.754, "speaker_label": "SPEAKER_01", "speaker": "Michael Loney, North America Editor, The Insurer", "language": "en", "text": "It sounds like kind of exciting times ahead."}, {"start": 377.814, "end": 383.676, "speaker_label": "SPEAKER_01", "speaker": "Michael Loney, North America Editor, The Insurer", "language": "en", "text": "So I think you're at about 100,000 customers and 15 million euros premium at the moment."}, {"start": 383.916, "end": 386.537, "speaker_label": "SPEAKER_01", "speaker": "Michael Loney, North America Editor, The Insurer", "language": "en", "text": "How do you see that growing for this year and beyond?"}, {"start": 386.797, "end": 391.539, "speaker_label": "SPEAKER_00", "speaker": "Juan Garcia, Co-founder and CEO of Tuio", "language": "en", "text": "We're probably seeing by the end of the year to be at like 30 million premiums."}, {"start": 391.679, "end": 398.881, "speaker_label": "SPEAKER_00", "speaker": "Juan Garcia, Co-founder and CEO of Tuio", "language": "en", "text": "Obviously, that's a lot of growth in auto, which is a car insurance, which is more expensive than normal household insurance."}, {"start": 398.901, "end": 401.322, "speaker_label": "SPEAKER_00", "speaker": "Juan Garcia, Co-founder and CEO of Tuio", "language": "en", "text": "But yeah, we see us continuing at 100% growth year over year."}, {"start": 403.143, "end": 432.342, "speaker_label": "SPEAKER_00", "speaker": "Juan Garcia, Co-founder and CEO of Tuio", "language": "en", "text": "it's what we are at now and yeah 2020 is going to be also interesting totally yeah and just lastly obviously you closed a i think 15 million financing round back in 2024. yeah how long do you see that lasting and when you have to return to you know raising capital raising funds yeah when you're doubling size every year then that marketing that marketing expenditure tends to be to be big and money runs out fast even though you're investing in the future so we are probably racing around by the end of the year beginning of next year to fund the international expansion"}, {"start": 433.724, "end": 439.032, "speaker_label": "SPEAKER_00", "speaker": "Juan Garcia, Co-founder and CEO of Tuio", "language": "en", "text": "So yeah, if anyone seeing this video wants to chat with us about that, we're happy to do so."}, {"start": 439.132, "end": 439.392, "speaker_label": "SPEAKER_00", "speaker": "Juan Garcia, Co-founder and CEO of Tuio", "language": "en", "text": "Great."}, {"start": 439.813, "end": 441.536, "speaker_label": "SPEAKER_00", "speaker": "Juan Garcia, Co-founder and CEO of Tuio", "language": "en", "text": "Well, Juan, thanks so much for joining us today."}, {"start": 441.696, "end": 442.557, "speaker_label": "SPEAKER_00", "speaker": "Juan Garcia, Co-founder and CEO of Tuio", "language": "en", "text": "Thank you for having us."}]}}; const loadData = id => Promise.resolve(DATA[id]); // packed
+// HLS sources (.m3u8) play natively in Safari; everywhere else hls.js is
+// loaded on demand from the CDN. mp4/data-URI sources bypass all of this.
+let hls = null;
+let hlsJsPromise = null;
+function loadHlsJs() {
+  if (window.Hls) return Promise.resolve();
+  if (!hlsJsPromise) hlsJsPromise = new Promise((ok, err) => {
+    const s = document.createElement('script');
+    s.src = 'https://cdn.jsdelivr.net/npm/hls.js@1.5.20/dist/hls.min.js';
+    s.onload = ok; s.onerror = () => err(new Error('hls.js failed to load'));
+    document.head.appendChild(s);
+  });
+  return hlsJsPromise;
+}
+function setSource(src) {
+  if (hls) { hls.destroy(); hls = null; }
+  if (src.includes('.m3u8')) {
+    if (video.canPlayType('application/vnd.apple.mpegurl')) {
+      video.src = src;
+    } else {
+      loadHlsJs().then(() => {
+        hls = new Hls();
+        hls.loadSource(src);
+        hls.attachMedia(video);
+      }).catch(e => console.error(e));
+    }
+  } else {
+    video.src = src;
+    video.load();
+  }
+}
+
+const video = document.getElementById('video');
+const box = document.getElementById('transcript');
+const overlay = document.getElementById('overlay');
+const overlayName = document.getElementById('overlayName');
+const overlayText = document.getElementById('overlayText');
+let segs = [];
+let activeIdx = -1;
+
+// On-player text toggles (persisted per viewer; storage may be unavailable).
+const prefs = { subs: true, name: true };
+try {
+  const saved = JSON.parse(localStorage.getItem('playerTextPrefs') || '{}');
+  if (typeof saved.subs === 'boolean') prefs.subs = saved.subs;
+  if (typeof saved.name === 'boolean') prefs.name = saved.name;
+} catch (e) { /* defaults stand */ }
+
+const toggleSubs = document.getElementById('toggleSubs');
+const toggleName = document.getElementById('toggleName');
+
+function applyPrefs() {
+  toggleSubs.classList.toggle('on', prefs.subs);
+  toggleName.classList.toggle('on', prefs.name);
+  toggleSubs.setAttribute('aria-pressed', prefs.subs);
+  toggleName.setAttribute('aria-pressed', prefs.name);
+  overlayText.hidden = !prefs.subs;
+  overlayName.hidden = !prefs.name;
+  if (!prefs.subs && !prefs.name) overlay.hidden = true;
+  else if (activeIdx !== -1) overlay.hidden = false;
+  try { localStorage.setItem('playerTextPrefs', JSON.stringify(prefs)); } catch (e) {}
+}
+
+toggleSubs.addEventListener('click', () => { prefs.subs = !prefs.subs; applyPrefs(); });
+toggleName.addEventListener('click', () => { prefs.name = !prefs.name; applyPrefs(); });
+applyPrefs();
+
+function fmt(t) {
+  const m = Math.floor(t / 60), s = Math.floor(t % 60);
+  return m + ':' + String(s).padStart(2, '0');
+}
+
+function renderTranscript(data) {
+  document.getElementById('statusBadge').hidden = data.status === 'auto_ok';
+  segs = data.segments;
+  activeIdx = -1;
+  box.innerHTML = segs.map((s, i) => {
+    const [name, ...roleParts] = s.speaker.split(', ');
+    const role = roleParts.join(', ');
+    return `<div class="seg" id="seg-${i}" data-start="${s.start}">
+      <span class="t">${fmt(s.start)}</span>
+      <div class="who">${name}${role ? `<span class="role">, ${role}</span>` : ''}</div>
+      <div class="text">${s.text}</div>
+    </div>`;
+  }).join('');
+}
+
+box.addEventListener('click', e => {
+  const el = e.target.closest('.seg');
+  if (!el) return;
+  video.currentTime = parseFloat(el.dataset.start) + 0.01;
+  video.play();
+});
+
+function switchTo(id) {
+  document.querySelectorAll('.vtab').forEach(b =>
+    b.classList.toggle('active', b.dataset.id === id));
+  const page = META[id] || { kicker: 'Video', headline: id, caption: '' };
+  document.title = page.headline + ' — video + transcript';
+  document.getElementById('kicker').textContent = page.kicker;
+  document.getElementById('headline').textContent = page.headline;
+  document.getElementById('caption').textContent = page.caption;
+
+  video.pause();
+  setSource(SOURCES[id]);
+  segs = [];
+  activeIdx = -1;
+  overlay.hidden = true;
+  box.innerHTML = '';
+  loadData(id).then(renderTranscript);
+}
+
+const tabsBar = document.getElementById('vtabs');
+tabsBar.innerHTML = TABS.map(t =>
+  `<button class="vtab" data-id="${t.id}">${t.label}</button>`).join('');
+tabsBar.addEventListener('click', e => {
+  const b = e.target.closest('.vtab');
+  if (b) switchTo(b.dataset.id);
+});
+
+const initial = new URLSearchParams(location.search).get('v');
+switchTo(TABS.some(t => t.id === initial) ? initial : TABS[0].id);
+video.addEventListener('timeupdate', () => {
+  const t = video.currentTime;
+  let idx = segs.findIndex(s => t >= s.start && t < s.end);
+  if (idx === activeIdx) return;
+
+  if (idx === -1) {
+    overlay.hidden = true;
+    const prev = document.getElementById('seg-' + activeIdx);
+    if (prev) prev.classList.remove('active');
+  } else {
+    const s = segs[idx];
+    const [name, ...roleParts] = s.speaker.split(', ');
+    const role = roleParts.join(', ');
+    overlayName.innerHTML = name === 'Unidentified'
+      ? `<span class="role">${role || 'Unidentified speaker'}</span>`
+      : `${name}${role ? ` <span class="role">· ${role}</span>` : ''}`;
+    overlayText.textContent = s.text;
+    overlay.hidden = !prefs.subs && !prefs.name;
+
+    const prev = document.getElementById('seg-' + activeIdx);
+    if (prev) prev.classList.remove('active');
+    const cur = document.getElementById('seg-' + idx);
+    if (cur) {
+      cur.classList.add('active');
+      cur.scrollIntoView({ block: 'nearest', behavior: 'smooth' });
+    }
+  }
+  activeIdx = idx;
+});
+</script>
+</body>
+</html>
