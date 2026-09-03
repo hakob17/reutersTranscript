@@ -16,9 +16,10 @@ import sys
 from pathlib import Path
 
 from .attribute import attribute_speakers
+from .captions import assign_cue_speakers, discover_caption_url, fetch_caption_cues
 from .models import ReviewStatus
 from .outputs import write_json, write_labeled_txt, write_vtt
-from .transcribe import extract_audio, transcribe_and_diarize
+from .transcribe import diarize_only, extract_audio, transcribe_and_diarize
 
 VIDEO_EXTS = {".mp4", ".mov", ".mxf", ".mkv", ".ts", ".m3u8"}
 
@@ -47,19 +48,46 @@ def process_one(
     args: argparse.Namespace,
 ) -> ReviewStatus:
     video_id = source_id(video, getattr(args, "video_id", None))
+
+    # Caption-first fast path: if the HLS master declares a subtitle
+    # rendition, use its text + timings and skip ASR entirely.
+    cues = None
+    if isinstance(video, str) and is_url(video) and not args.no_captions:
+        cap_url = discover_caption_url(video)
+        if cap_url:
+            try:
+                cues = fetch_caption_cues(cap_url) or None
+            except Exception as exc:
+                print(f"[{video_id}] caption fetch failed ({exc}) — "
+                      "falling back to ASR")
+        if cues:
+            print(f"[{video_id}] captions found ({len(cues)} cues) — "
+                  "caption-first mode, skipping ASR")
+
     print(f"[{video_id}] extracting audio...")
     wav = extract_audio(video, out_dir / f"{video_id}.wav")
 
-    print(f"[{video_id}] transcribing + diarizing ({args.model} on {args.device})...")
-    segments = transcribe_and_diarize(
-        wav,
-        hf_token=os.environ["HF_TOKEN"],
-        model_name=args.model,
-        device=args.device,
-        compute_type=args.compute_type,
-        min_speakers=args.min_speakers,
-        max_speakers=args.max_speakers,
-    )
+    if cues:
+        print(f"[{video_id}] diarizing (no ASR, on {args.device})...")
+        turns = diarize_only(
+            wav,
+            hf_token=os.environ["HF_TOKEN"],
+            device=args.device,
+            min_speakers=args.min_speakers,
+            max_speakers=args.max_speakers,
+        )
+        segments = assign_cue_speakers(cues, turns)
+    else:
+        print(f"[{video_id}] transcribing + diarizing ({args.model} on {args.device})...")
+        segments = transcribe_and_diarize(
+            wav,
+            hf_token=os.environ["HF_TOKEN"],
+            model_name=args.model,
+            device=args.device,
+            compute_type=args.compute_type,
+            min_speakers=args.min_speakers,
+            max_speakers=args.max_speakers,
+        )
     print(f"[{video_id}] {len(segments)} segments, "
           f"{len({s.speaker for s in segments})} speakers detected")
 
@@ -104,6 +132,8 @@ def main() -> int:
                    help="float16 on GPU, int8 on CPU")
     p.add_argument("--min-speakers", type=int)
     p.add_argument("--max-speakers", type=int)
+    p.add_argument("--no-captions", action="store_true",
+                   help="ignore broadcaster captions and always run ASR")
     args = p.parse_args()
 
     args.out.mkdir(parents=True, exist_ok=True)
