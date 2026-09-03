@@ -78,6 +78,18 @@
     padding: 4px 10px; border-radius: 2px;
   }
   #overlay[hidden] { display: none; }
+  #overlayName[hidden], #overlayText[hidden] { display: none; }
+
+  .player-toggles { display: flex; gap: 8px; margin-top: 10px; }
+  .ptoggle {
+    appearance: none; cursor: pointer; font: inherit; font-size: 12.5px;
+    font-weight: 700; letter-spacing: .3px;
+    border: 1px solid var(--line); border-radius: 999px;
+    background: #fafafa; color: var(--muted); padding: 4px 12px;
+  }
+  .ptoggle.on {
+    background: var(--accent); border-color: var(--accent); color: #fff;
+  }
   .caption { color: var(--muted); font-size: 13px; margin-top: 10px; }
 
   .transcript-col h2 {
@@ -155,6 +167,10 @@
           <div id="overlayName"></div>
           <div id="overlayText"></div>
         </div>
+      </div>
+      <div class="player-toggles">
+        <button class="ptoggle" id="toggleSubs" aria-pressed="true">Subtitles</button>
+        <button class="ptoggle" id="toggleName" aria-pressed="true">Speaker name</button>
       </div>
       <div class="caption" id="caption"></div>
     </div>
@@ -275,6 +291,33 @@ const overlayText = document.getElementById('overlayText');
 let segs = [];
 let activeIdx = -1;
 
+// On-player text toggles (persisted per viewer; storage may be unavailable).
+const prefs = { subs: true, name: true };
+try {
+  const saved = JSON.parse(localStorage.getItem('playerTextPrefs') || '{}');
+  if (typeof saved.subs === 'boolean') prefs.subs = saved.subs;
+  if (typeof saved.name === 'boolean') prefs.name = saved.name;
+} catch (e) { /* defaults stand */ }
+
+const toggleSubs = document.getElementById('toggleSubs');
+const toggleName = document.getElementById('toggleName');
+
+function applyPrefs() {
+  toggleSubs.classList.toggle('on', prefs.subs);
+  toggleName.classList.toggle('on', prefs.name);
+  toggleSubs.setAttribute('aria-pressed', prefs.subs);
+  toggleName.setAttribute('aria-pressed', prefs.name);
+  overlayText.hidden = !prefs.subs;
+  overlayName.hidden = !prefs.name;
+  if (!prefs.subs && !prefs.name) overlay.hidden = true;
+  else if (activeIdx !== -1) overlay.hidden = false;
+  try { localStorage.setItem('playerTextPrefs', JSON.stringify(prefs)); } catch (e) {}
+}
+
+toggleSubs.addEventListener('click', () => { prefs.subs = !prefs.subs; applyPrefs(); });
+toggleName.addEventListener('click', () => { prefs.name = !prefs.name; applyPrefs(); });
+applyPrefs();
+
 function fmt(t) {
   const m = Math.floor(t / 60), s = Math.floor(t % 60);
   return m + ':' + String(s).padStart(2, '0');
@@ -348,7 +391,7 @@ video.addEventListener('timeupdate', () => {
       ? `<span class="role">${role || 'Unidentified speaker'}</span>`
       : `${name}${role ? ` <span class="role">· ${role}</span>` : ''}`;
     overlayText.textContent = s.text;
-    overlay.hidden = false;
+    overlay.hidden = !prefs.subs && !prefs.name;
 
     const prev = document.getElementById('seg-' + activeIdx);
     if (prev) prev.classList.remove('active');
