@@ -9,6 +9,7 @@ out/
 .venv/
 *_share.html
 build/
+transcript_demo.zip
 .terraform/
 *.tfstate
 *.tfstate.*
