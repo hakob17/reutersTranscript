@@ -1,53 +1,67 @@
 """Pack the player page into ONE self-contained HTML file for stakeholders.
 
-Embeds the (720p) video as a base64 data URI and inlines the transcript JSON,
-so the result opens with a double-click — no server, no sidecar files.
+Embeds the (720p) videos as base64 data URIs and inlines the transcript JSON
+for every id, so the result opens with a double-click — no server, no sidecar
+files. The page's tab bar (Reuters / Insurer / ...) switches between videos.
 
 Usage:
-  python web/pack.py [--video epstein_778738_720.mp4]
-                     [--json out/epstein_778738.json]
-                     [--out epstein_778738_share.html]
+  python web/pack.py                                   # both demo videos
+  python web/pack.py --ids 782809                      # single video
+  python web/pack.py --ids epstein_778738,782809 --out demo.html
 """
 from __future__ import annotations
 
 import argparse
 import base64
 import json
+import re
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent.parent
 TEMPLATE = Path(__file__).resolve().parent / "index.html"
 
+# Where each id's embeddable 720p file lives.
+VIDEO_FILES = {
+    "epstein_778738": ROOT / "epstein_778738_720.mp4",
+    "782809": ROOT / "782809_720.mp4",
+}
+
+
+def replace_marked_line(html: str, marker: str, new_line: str) -> str:
+    """Replace the single line carrying `// PACK:<marker>` with new_line."""
+    pattern = re.compile(rf"^.*// PACK:{marker}\s*$", re.MULTILINE)
+    if not pattern.search(html):
+        raise SystemExit(f"pack failed: marker PACK:{marker} not found in template")
+    return pattern.sub(lambda _m: new_line, html, count=1)
+
 
 def main() -> int:
     p = argparse.ArgumentParser(description=__doc__)
-    p.add_argument("--video", type=Path, default=ROOT / "epstein_778738_720.mp4")
-    p.add_argument("--json", dest="json_path", type=Path,
-                   default=ROOT / "out" / "epstein_778738.json")
-    p.add_argument("--out", type=Path, default=ROOT / "epstein_778738_share.html")
+    p.add_argument("--ids", default="epstein_778738,782809",
+                   help="comma-separated video ids (must match TABS in index.html)")
+    p.add_argument("--out", type=Path, default=ROOT / "transcript_demo_share.html")
     args = p.parse_args()
+    ids = [i.strip() for i in args.ids.split(",") if i.strip()]
 
     html = TEMPLATE.read_text(encoding="utf-8")
 
-    video_b64 = base64.b64encode(args.video.read_bytes()).decode()
-    html = html.replace(
-        '<source src="../epstein_778738_web.mp4" type="video/mp4">',
-        f'<source src="data:video/mp4;base64,{video_b64}" type="video/mp4">',
-    )
+    sources = {}
+    for vid in ids:
+        f = VIDEO_FILES.get(vid, ROOT / f"{vid}_720.mp4")
+        sources[vid] = "data:video/mp4;base64," + base64.b64encode(f.read_bytes()).decode()
+    html = replace_marked_line(
+        html, "SRC", f"const SOURCES = {json.dumps(sources)}; // packed")
 
-    data = json.loads(args.json_path.read_text(encoding="utf-8"))
+    data = {}
+    for vid in ids:
+        data[vid] = json.loads((ROOT / "out" / f"{vid}.json").read_text(encoding="utf-8"))
     inline = json.dumps(data, ensure_ascii=False).replace("</", "<\\/")
-    html = html.replace(
-        "const loadData = () => fetch('../out/epstein_778738.json')"
-        ".then(r => r.json()); // PACK:DATA",
-        f"const loadData = () => Promise.resolve({inline}); // packed",
-    )
-
-    if "data:video/mp4" not in html or "Promise.resolve" not in html:
-        raise SystemExit("pack failed: template markers not found in index.html")
+    html = replace_marked_line(
+        html, "DATA",
+        f"const DATA = {inline}; const loadData = id => Promise.resolve(DATA[id]); // packed")
 
     args.out.write_text(html, encoding="utf-8")
-    print(f"wrote {args.out} ({args.out.stat().st_size / 1e6:.1f} MB)")
+    print(f"wrote {args.out} ({args.out.stat().st_size / 1e6:.1f} MB, videos: {', '.join(ids)})")
     return 0
 
 
