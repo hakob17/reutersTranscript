@@ -26,6 +26,13 @@ VIDEO_FILES = {
     "782809": ROOT / "782809_720.mp4",
 }
 
+# CDN stream URLs for --stream mode (page plays these via hls.js; needs
+# internet and a CDN that allows cross-origin segment fetches).
+STREAM_URLS = {
+    "epstein_778738": "https://ajo.prod.reuters.tv/v3/playlist/1920x1080/778738/rendition.m3u8",
+    "782809": "https://ajo.prod.reuters.tv/v3/playlist/782809/master.m3u8",
+}
+
 
 def replace_marked_line(html: str, marker: str, new_line: str) -> str:
     """Replace the single line carrying `// PACK:<marker>` with new_line."""
@@ -39,16 +46,25 @@ def main() -> int:
     p = argparse.ArgumentParser(description=__doc__)
     p.add_argument("--ids", default="epstein_778738,782809",
                    help="comma-separated video ids (must match TABS in index.html)")
-    p.add_argument("--out", type=Path, default=ROOT / "transcript_demo_share.html")
+    p.add_argument("--stream", action="store_true",
+                   help="reference CDN HLS URLs instead of embedding video "
+                        "(tiny file, needs internet)")
+    p.add_argument("--out", type=Path, default=None)
     args = p.parse_args()
     ids = [i.strip() for i in args.ids.split(",") if i.strip()]
+    out = args.out or (ROOT / ("transcript_demo_stream.html" if args.stream
+                               else "transcript_demo_share.html"))
 
     html = TEMPLATE.read_text(encoding="utf-8")
 
     sources = {}
     for vid in ids:
-        f = VIDEO_FILES.get(vid, ROOT / f"{vid}_720.mp4")
-        sources[vid] = "data:video/mp4;base64," + base64.b64encode(f.read_bytes()).decode()
+        if args.stream:
+            sources[vid] = STREAM_URLS[vid]
+        else:
+            f = VIDEO_FILES.get(vid, ROOT / f"{vid}_720.mp4")
+            sources[vid] = ("data:video/mp4;base64,"
+                            + base64.b64encode(f.read_bytes()).decode())
     html = replace_marked_line(
         html, "SRC", f"const SOURCES = {json.dumps(sources)}; // packed")
 
@@ -60,8 +76,11 @@ def main() -> int:
         html, "DATA",
         f"const DATA = {inline}; const loadData = id => Promise.resolve(DATA[id]); // packed")
 
-    args.out.write_text(html, encoding="utf-8")
-    print(f"wrote {args.out} ({args.out.stat().st_size / 1e6:.1f} MB, videos: {', '.join(ids)})")
+    out.write_text(html, encoding="utf-8")
+    size = out.stat().st_size
+    size_str = f"{size / 1e6:.1f} MB" if size > 1e6 else f"{size / 1e3:.0f} KB"
+    print(f"wrote {out} ({size_str}, videos: {', '.join(ids)}, "
+          f"{'CDN stream' if args.stream else 'embedded'})")
     return 0
 
 

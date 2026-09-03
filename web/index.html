@@ -283,6 +283,38 @@ const META = {
 const SOURCES = { 'epstein_778738': '../epstein_778738_web.mp4', '782809': '../782809_720.mp4' }; // PACK:SRC
 const loadData = id => fetch(`../out/${id}.json`).then(r => r.json()); // PACK:DATA
 
+// HLS sources (.m3u8) play natively in Safari; everywhere else hls.js is
+// loaded on demand from the CDN. mp4/data-URI sources bypass all of this.
+let hls = null;
+let hlsJsPromise = null;
+function loadHlsJs() {
+  if (window.Hls) return Promise.resolve();
+  if (!hlsJsPromise) hlsJsPromise = new Promise((ok, err) => {
+    const s = document.createElement('script');
+    s.src = 'https://cdn.jsdelivr.net/npm/hls.js@1.5.20/dist/hls.min.js';
+    s.onload = ok; s.onerror = () => err(new Error('hls.js failed to load'));
+    document.head.appendChild(s);
+  });
+  return hlsJsPromise;
+}
+function setSource(src) {
+  if (hls) { hls.destroy(); hls = null; }
+  if (src.includes('.m3u8')) {
+    if (video.canPlayType('application/vnd.apple.mpegurl')) {
+      video.src = src;
+    } else {
+      loadHlsJs().then(() => {
+        hls = new Hls();
+        hls.loadSource(src);
+        hls.attachMedia(video);
+      }).catch(e => console.error(e));
+    }
+  } else {
+    video.src = src;
+    video.load();
+  }
+}
+
 const video = document.getElementById('video');
 const box = document.getElementById('transcript');
 const overlay = document.getElementById('overlay');
@@ -355,8 +387,7 @@ function switchTo(id) {
   document.getElementById('caption').textContent = page.caption;
 
   video.pause();
-  video.src = SOURCES[id];
-  video.load();
+  setSource(SOURCES[id]);
   segs = [];
   activeIdx = -1;
   overlay.hidden = true;
