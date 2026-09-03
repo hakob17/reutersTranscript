@@ -28,6 +28,31 @@ def extract_audio(video_path: Path | str, out_wav: Path | None = None) -> Path:
     return out_wav
 
 
+def diarize_only(
+    audio_path: Path,
+    hf_token: str,
+    device: str = "cuda",
+    min_speakers: int | None = None,
+    max_speakers: int | None = None,
+) -> list[tuple[float, float, str]]:
+    """Diarization without ASR — the caption-first path, where text and
+    timings already come from the broadcaster's VTT. Returns speaker turns
+    as (start, end, label)."""
+    import whisperx  # lazy import
+    from whisperx.diarize import DiarizationPipeline  # submodule not auto-imported
+
+    audio = whisperx.load_audio(str(audio_path))
+    diarize_model = DiarizationPipeline(token=hf_token, device=device)
+    kwargs = {}
+    if min_speakers is not None:
+        kwargs["min_speakers"] = min_speakers
+    if max_speakers is not None:
+        kwargs["max_speakers"] = max_speakers
+    df = diarize_model(audio, **kwargs)
+    return [(float(r["start"]), float(r["end"]), str(r["speaker"]))
+            for _, r in df.iterrows()]
+
+
 def transcribe_and_diarize(
     audio_path: Path,
     hf_token: str,

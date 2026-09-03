@@ -18,6 +18,11 @@ pytest tests/                                  # offline, no GPU/API needed
 python -m speaker_attribution.pipeline VIDEO.mp4 --out out
 python -m speaker_attribution.chyron VIDEO.mp4 out/VIDEO.json --out out
 
+# HLS stream URLs work directly; if the master playlist declares a WebVTT
+# subtitle rendition, the pipeline auto-switches to caption-first mode
+# (captions.py: no ASR, diarize-only, ~90s cold vs ~4min). --no-captions forces ASR.
+python -m speaker_attribution.pipeline "https://.../master.m3u8" --out out
+
 # demo player (video seeking REQUIRES a Range-capable server — plain
 # http.server silently breaks seeking)
 python -m RangeHTTPServer 8017                 # open http://localhost:8017/web/
@@ -52,6 +57,12 @@ frames to the vision model — detection gates what reaches the API.
 - `speaker_attribution/chyron.py` imports cv2 **lazily inside functions** and
   exposes `read_chyron_crops()` — the attribute Lambda bundles this module
   WITHOUT OpenCV. Adding a top-level `import cv2` breaks the Lambda.
+- Caption-first mode (`captions.py`) auto-activates for HLS URLs whose master
+  playlist declares TYPE=SUBTITLES; it is dependency-free on purpose (regex
+  VTT parsing, stdlib HTTP) so the attribute Lambda can bundle it. Any fetch
+  failure falls back to ASR silently — keep that contract.
+- `whisperx.diarize` is NOT auto-imported by `import whisperx` — use
+  `from whisperx.diarize import DiarizationPipeline` (transcribe.py does).
 - WhisperX ≥3.4: `DiarizationPipeline(token=...)` (not `use_auth_token=`);
   default diarization model is gated `pyannote/speaker-diarization-community-1`
   — the HF account must accept its terms (3.1 alone is NOT enough: pyannote 4.x
