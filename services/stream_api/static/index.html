@@ -1,0 +1,222 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>On-demand transcript — streaming demo</title>
+<style>
+  :root {
+    --bg:#fff; --ink:#111; --muted:#666; --line:#e6e6e6;
+    --accent:#fa6400; --active-bg:#fff4ec; --pending:#9aa0a6;
+  }
+  * { box-sizing: border-box; }
+  body { margin:0; background:var(--bg); color:var(--ink);
+         font-family:"Segoe UI",-apple-system,Arial,sans-serif; line-height:1.5; }
+  .wrap { max-width:1200px; margin:0 auto; padding:24px 20px 60px; }
+  header.masthead { border-bottom:1px solid var(--line); padding:14px 0; margin-bottom:18px; }
+  .brand { font-weight:700; font-size:20px; } .brand .dot { color:var(--accent); }
+  h1 { font-size:24px; margin:6px 0 2px; }
+  .sub { color:var(--muted); font-size:13.5px; margin-bottom:16px; }
+
+  .layout { display:grid; grid-template-columns:minmax(0,7fr) minmax(300px,5fr); gap:26px; }
+  @media (max-width:900px){ .layout { grid-template-columns:1fr; } }
+
+  video { width:100%; display:block; background:#000; border-radius:4px; }
+
+  /* pipeline status rail */
+  .rail { display:flex; gap:6px; margin:12px 0 6px; flex-wrap:wrap; }
+  .stage { font-size:11.5px; font-weight:700; letter-spacing:.4px; text-transform:uppercase;
+           border:1px solid var(--line); border-radius:999px; padding:3px 10px; color:var(--muted); }
+  .stage.active { border-color:var(--accent); color:var(--accent); }
+  .stage.done { background:var(--accent); border-color:var(--accent); color:#fff; }
+  .stage.error { background:#b00020; border-color:#b00020; color:#fff; }
+  #statusDetail { font-size:12.5px; color:var(--muted); min-height:18px; }
+
+  /* playhead vs edge meter */
+  .meter { position:relative; height:10px; background:#f1f1f1; border-radius:5px; margin:10px 0 4px; }
+  #edgeBar { position:absolute; left:0; top:0; bottom:0; background:#ffd9bf; border-radius:5px; width:0; }
+  #namesBar { position:absolute; left:0; top:0; bottom:0; background:var(--accent); opacity:.55; border-radius:5px; width:0; }
+  #playheadMark { position:absolute; top:-3px; bottom:-3px; width:3px; background:var(--ink); border-radius:2px; left:0; }
+  .meter-legend { display:flex; gap:16px; font-size:11.5px; color:var(--muted); margin-bottom:8px; }
+  .meter-legend b { font-weight:700; }
+  .swatch { display:inline-block; width:10px; height:10px; border-radius:2px; vertical-align:-1px; margin-right:4px; }
+
+  /* transcript */
+  .tcol h2 { font-size:13px; text-transform:uppercase; letter-spacing:.8px; color:var(--muted);
+             margin:0 0 10px; font-weight:700; }
+  #transcript { border-top:3px solid var(--ink); max-height:560px; overflow-y:auto; }
+  .seg { padding:9px 12px; border-bottom:1px solid var(--line); cursor:pointer; }
+  .seg:hover { background:#fafafa; }
+  .seg.active { background:var(--active-bg); border-left:3px solid var(--accent); padding-left:9px; }
+  .seg.future { opacity:.55; }
+  .seg .t { color:var(--muted); font-size:12px; float:right; font-variant-numeric:tabular-nums; }
+  .seg .text { font-size:14.5px; margin-top:3px; }
+  .chip { display:inline-block; font-size:11px; font-weight:700; border-radius:3px;
+          padding:1px 7px; letter-spacing:.3px; }
+  .chip.pending { background:#eee; color:var(--pending); }
+  .chip.diarized { background:#e8eaf6; color:#3949ab; }
+  .chip.named { background:var(--accent); color:#fff; }
+  .chip.unident { background:#eee; color:#555; }
+
+  /* protocol log */
+  details.log { margin-top:18px; }
+  details.log summary { cursor:pointer; font-size:13px; font-weight:700; color:var(--muted); }
+  #eventLog { font:11.5px/1.6 Consolas,monospace; background:#fafafa; border:1px solid var(--line);
+              border-radius:4px; padding:10px; max-height:180px; overflow-y:auto; white-space:pre-wrap; }
+  .note { font-size:12.5px; color:var(--muted); margin-top:14px; }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <header class="masthead"><div class="brand">Wire<span class="dot">.</span>Transcript <span style="font-weight:400;color:var(--muted)">· on-demand streaming demo</span></div></header>
+
+  <h1>Tuio CEO: AI more a threat to brokers for personal lines than commercial</h1>
+  <div class="sub">The video plays immediately from the CDN. The transcript is processed
+    <b>on demand, right now</b>, and streams in beside it — text first, then diarized
+    speakers, then names, each as a retroactive update. Reload after completion to see
+    the cache path.</div>
+
+  <div class="layout">
+    <div>
+      <video id="video" controls autoplay muted playsinline></video>
+      <div class="rail" id="rail"></div>
+      <div id="statusDetail"></div>
+      <div class="meter">
+        <div id="edgeBar"></div><div id="namesBar"></div><div id="playheadMark"></div>
+      </div>
+      <div class="meter-legend">
+        <span><span class="swatch" style="background:#ffd9bf"></span>text edge</span>
+        <span><span class="swatch" style="background:var(--accent);opacity:.55"></span>named</span>
+        <span><span class="swatch" style="background:var(--ink)"></span><b>playhead</b></span>
+      </div>
+      <details class="log"><summary>SSE protocol log</summary><div id="eventLog"></div></details>
+      <p class="note">Invariant: <i>processing edge &gt; playhead</i>. With caption-first
+        attribution the text edge outruns playback within seconds; names trail by roughly a
+        minute and are applied to already-rendered lines — the protocol updates, it doesn't
+        only append. One job per video regardless of viewer count; the finished event log is
+        cached, so every later view is instant.</p>
+    </div>
+
+    <div class="tcol">
+      <h2>Transcript <span id="lineCount" style="font-weight:400;text-transform:none"></span></h2>
+      <div id="transcript"></div>
+    </div>
+  </div>
+</div>
+
+<script src="https://cdn.jsdelivr.net/npm/hls.js@1.5.20/dist/hls.min.js"></script>
+<script>
+const VIDEO_ID = new URLSearchParams(location.search).get('v') || '782809';
+const HLS_URL = `https://ajo.prod.reuters.tv/v3/playlist/${VIDEO_ID}/master.m3u8`;
+
+const video = document.getElementById('video');
+const box = document.getElementById('transcript');
+const rail = document.getElementById('rail');
+const logEl = document.getElementById('eventLog');
+
+/* ---- playback starts immediately; processing never gates it ---- */
+if (video.canPlayType('application/vnd.apple.mpegurl')) video.src = HLS_URL;
+else { const h = new Hls(); h.loadSource(HLS_URL); h.attachMedia(video); }
+
+/* ---- pipeline status rail ---- */
+const STAGES = ['captions','audio','diarizing','attributing','done'];
+rail.innerHTML = STAGES.map(s => `<span class="stage" id="st-${s}">${s}</span>`).join('');
+function setStage(stage) {
+  if (stage === 'cached') { STAGES.forEach(s => document.getElementById('st-'+s).classList.add('done')); return; }
+  if (stage === 'error') { rail.insertAdjacentHTML('beforeend','<span class="stage error">error</span>'); return; }
+  let hit = false;
+  for (const s of STAGES) {
+    const el = document.getElementById('st-'+s);
+    el.classList.remove('active');
+    if (s === stage) { el.classList.add(stage === 'done' ? 'done' : 'active'); hit = true; }
+    else if (!hit) el.classList.add('done');
+  }
+}
+
+/* ---- transcript state (append + retroactive update) ---- */
+const lines = [];           // {i,start,end,text,label,display,cls}
+let mapping = null;
+const fmt = t => Math.floor(t/60) + ':' + String(Math.floor(t%60)).padStart(2,'0');
+
+function chipHtml(l) {
+  if (!l.label) return '<span class="chip pending">processing…</span>';
+  if (!mapping) {
+    const n = parseInt(l.label.split('_')[1] || '0', 10) + 1;
+    return `<span class="chip diarized">Speaker ${n}</span>`;
+  }
+  const m = mapping[l.label];
+  if (!m || m.name === 'Unidentified')
+    return `<span class="chip unident">${(m && m.role) || 'Unidentified'}</span>`;
+  return `<span class="chip named">${m.name}${m.role ? ' · ' + m.role : ''}</span>`;
+}
+function renderLine(l) {
+  let el = document.getElementById('seg-' + l.i);
+  if (!el) {
+    el = document.createElement('div');
+    el.className = 'seg future'; el.id = 'seg-' + l.i; el.dataset.start = l.start;
+    box.appendChild(el);
+  }
+  el.innerHTML = `<span class="t">${fmt(l.start)}</span>${chipHtml(l)}<div class="text">${l.text}</div>`;
+  document.getElementById('lineCount').textContent = `· ${lines.length} lines`;
+}
+box.addEventListener('click', e => {
+  const el = e.target.closest('.seg'); if (!el) return;
+  video.currentTime = parseFloat(el.dataset.start) + 0.01; video.play();
+});
+
+/* ---- SSE consumption ---- */
+const es = new EventSource(`/api/stream/${VIDEO_ID}`);
+es.onmessage = msg => {
+  const ev = JSON.parse(msg.data);
+  logEl.textContent += JSON.stringify(ev).slice(0, 220) + '\n';
+  logEl.scrollTop = logEl.scrollHeight;
+
+  if (ev.type === 'status') {
+    setStage(ev.stage);
+    document.getElementById('statusDetail').textContent = ev.detail || '';
+  } else if (ev.type === 'lines') {
+    for (const l of ev.lines) { lines[l.i] = l; renderLine(l); }
+    updateMeter();
+  } else if (ev.type === 'speakers_assigned') {
+    for (const a of ev.assignments) if (lines[a.i]) { lines[a.i].label = a.label; renderLine(lines[a.i]); }
+  } else if (ev.type === 'names') {
+    mapping = ev.mapping;
+    lines.forEach(renderLine);
+    updateMeter(true);
+    if (ev.review_status && ev.review_status !== 'auto_ok')
+      document.getElementById('statusDetail').textContent =
+        `flagged ${ev.review_status}: ` + (ev.warnings || []).slice(0,1).join('');
+  } else if (ev.type === 'done') {
+    setStage('done'); es.close();
+  }
+};
+
+/* ---- playhead vs processing edge ---- */
+function updateMeter(named) {
+  const dur = video.duration || (lines.length ? lines[lines.length-1].end : 0) || 1;
+  const edge = lines.length ? lines[lines.length-1].end : 0;
+  document.getElementById('edgeBar').style.width = Math.min(100, edge/dur*100) + '%';
+  if (named) document.getElementById('namesBar').style.width = Math.min(100, edge/dur*100) + '%';
+}
+let activeIdx = -1;
+video.addEventListener('timeupdate', () => {
+  const t = video.currentTime;
+  const dur = video.duration || 1;
+  document.getElementById('playheadMark').style.left = `calc(${Math.min(100, t/dur*100)}% - 1px)`;
+  lines.forEach(l => {
+    const el = document.getElementById('seg-' + l.i);
+    if (el) el.classList.toggle('future', l.start > t + 0.3);
+  });
+  const idx = lines.findIndex(l => t >= l.start && t < l.end);
+  if (idx === activeIdx) return;
+  const prev = document.getElementById('seg-' + activeIdx);
+  if (prev) prev.classList.remove('active');
+  if (idx !== -1) {
+    const cur = document.getElementById('seg-' + idx);
+    if (cur) { cur.classList.add('active'); cur.scrollIntoView({block:'nearest', behavior:'smooth'}); }
+  }
+  activeIdx = idx;
+});
+</script>
+</body>
+</html>

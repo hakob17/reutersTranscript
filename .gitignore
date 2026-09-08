@@ -7,6 +7,7 @@ out/*.wav
 *.mp4
 out/
 out_cap/
+out_stream/
 .venv/
 *_share.html
 build/
