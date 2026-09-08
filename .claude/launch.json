@@ -6,6 +6,12 @@
       "runtimeExecutable": ".venv\\Scripts\\python.exe",
       "runtimeArgs": ["-m", "RangeHTTPServer", "8017"],
       "port": 8017
+    },
+    {
+      "name": "stream-demo",
+      "runtimeExecutable": ".venv\\Scripts\\python.exe",
+      "runtimeArgs": ["-m", "uvicorn", "services.stream_api.server:app", "--port", "8031"],
+      "port": 8031
     }
   ]
 }

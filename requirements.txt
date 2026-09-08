@@ -10,3 +10,5 @@ hf_xet                 # fast/reliable HuggingFace model downloads
 # Dev
 pytest
 rangehttpserver        # local demo server with HTTP Range support (video seeking)
+fastapi                # on-demand streaming transcript demo (services/stream_api)
+uvicorn[standard]

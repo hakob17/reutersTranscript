@@ -28,6 +28,11 @@ python -m speaker_attribution.pipeline "https://.../master.m3u8" --out out
 python -m RangeHTTPServer 8017                 # open http://localhost:8017/web/
 python web/pack.py                             # one-file shareable demo HTML
 
+# on-demand streaming demo: video plays instantly, transcript processes live
+# and streams over SSE (append lines -> update speakers -> update names);
+# one job per video id, finished event log cached in out_stream/
+python -m uvicorn services.stream_api.server:app --port 8031
+
 # infra
 bash scripts/build_lambdas.sh                  # stage build/lambdas/* (run before plan)
 terraform -chdir=infra validate
