@@ -70,11 +70,13 @@
 <div class="wrap">
   <header class="masthead"><div class="brand">Wire<span class="dot">.</span>Transcript <span style="font-weight:400;color:var(--muted)">· on-demand streaming demo</span></div></header>
 
-  <h1>Tuio CEO: AI more a threat to brokers for personal lines than commercial</h1>
+  <h1 id="title">Loading…</h1>
   <div class="sub">The video plays immediately from the CDN. The transcript is processed
     <b>on demand, right now</b>, and streams in beside it — text first, then diarized
-    speakers, then names, each as a retroactive update. Reload after completion to see
-    the cache path.</div>
+    speakers, then names, each as a retroactive update. Captioned videos use the CDN's
+    own VTT (text edge in seconds); uncaptioned ones (e.g. Arabic) stream chunked
+    Whisper ASR instead. Reload after completion to see the cache path.
+    <span id="videoLinks"></span></div>
 
   <div class="layout">
     <div>
@@ -107,7 +109,6 @@
 <script src="https://cdn.jsdelivr.net/npm/hls.js@1.5.20/dist/hls.min.js"></script>
 <script>
 const VIDEO_ID = new URLSearchParams(location.search).get('v') || '782809';
-const HLS_URL = `https://ajo.prod.reuters.tv/v3/playlist/${VIDEO_ID}/master.m3u8`;
 
 const video = document.getElementById('video');
 const box = document.getElementById('transcript');
@@ -115,21 +116,34 @@ const rail = document.getElementById('rail');
 const logEl = document.getElementById('eventLog');
 
 /* ---- playback starts immediately; processing never gates it ---- */
-if (video.canPlayType('application/vnd.apple.mpegurl')) video.src = HLS_URL;
-else { const h = new Hls(); h.loadSource(HLS_URL); h.attachMedia(video); }
+fetch('/api/videos').then(r => r.json()).then(catalogue => {
+  const entry = catalogue[VIDEO_ID];
+  if (!entry) return;
+  document.getElementById('title').textContent = entry.title;
+  document.title = entry.title + ' — streaming demo';
+  document.getElementById('videoLinks').innerHTML = ' Videos: ' +
+    Object.entries(catalogue).map(([id, e]) =>
+      id === VIDEO_ID ? `<b>${id}</b>` : `<a href="?v=${id}">${id}</a>`).join(' · ');
+  if (video.canPlayType('application/vnd.apple.mpegurl')) video.src = entry.url;
+  else { const h = new Hls(); h.loadSource(entry.url); h.attachMedia(video); }
+});
 
-/* ---- pipeline status rail ---- */
-const STAGES = ['captions','audio','diarizing','attributing','done'];
+/* ---- pipeline status rail (transcribing only appears on the ASR path) ---- */
+const STAGES = ['captions','audio','transcribing','diarizing','attributing','chyron','done'];
 rail.innerHTML = STAGES.map(s => `<span class="stage" id="st-${s}">${s}</span>`).join('');
+const seenStages = new Set();
 function setStage(stage) {
-  if (stage === 'cached') { STAGES.forEach(s => document.getElementById('st-'+s).classList.add('done')); return; }
+  if (stage === 'cached') { seenStages.add('cached'); return; }
   if (stage === 'error') { rail.insertAdjacentHTML('beforeend','<span class="stage error">error</span>'); return; }
-  let hit = false;
+  seenStages.add(stage);
   for (const s of STAGES) {
     const el = document.getElementById('st-'+s);
     el.classList.remove('active');
-    if (s === stage) { el.classList.add(stage === 'done' ? 'done' : 'active'); hit = true; }
-    else if (!hit) el.classList.add('done');
+    // only stages this job actually went through light up — 'transcribing'
+    // stays neutral on the caption-first path
+    if (seenStages.has('cached')) { if (seenStages.has(s) || s === 'done') el.classList.add('done'); continue; }
+    if (s === stage && stage !== 'done') el.classList.add('active');
+    else if (seenStages.has(s)) el.classList.add('done');
   }
 }
 
@@ -156,7 +170,7 @@ function renderLine(l) {
     el.className = 'seg future'; el.id = 'seg-' + l.i; el.dataset.start = l.start;
     box.appendChild(el);
   }
-  el.innerHTML = `<span class="t">${fmt(l.start)}</span>${chipHtml(l)}<div class="text">${l.text}</div>`;
+  el.innerHTML = `<span class="t">${fmt(l.start)}</span>${chipHtml(l)}<div class="text" dir="auto">${l.text}</div>`;
   document.getElementById('lineCount').textContent = `· ${lines.length} lines`;
 }
 box.addEventListener('click', e => {
@@ -175,6 +189,11 @@ es.onmessage = msg => {
     setStage(ev.stage);
     document.getElementById('statusDetail').textContent = ev.detail || '';
   } else if (ev.type === 'lines') {
+    for (const l of ev.lines) { lines[l.i] = l; renderLine(l); }
+    updateMeter();
+  } else if (ev.type === 'replace_lines') {
+    // retroactive re-segmentation: ASR lines split at speaker boundaries
+    lines.length = 0; box.innerHTML = ''; activeIdx = -1;
     for (const l of ev.lines) { lines[l.i] = l; renderLine(l); }
     updateMeter();
   } else if (ev.type === 'speakers_assigned') {

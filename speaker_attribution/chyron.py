@@ -32,6 +32,7 @@ BAND_TOP, BAND_BOTTOM = 0.60, 0.97  # lower-third region (fraction of height)
 MIN_TEXT_SCORE = 0.006      # text-like area fraction to count as a chyron
 EVENT_GAP_S = 1.0           # samples closer than this merge into one event
 MAX_FRAMES_TO_LLM = 16
+PER_LABEL_CAP = 3           # frame budget per speaker — keeps crop selection diverse
 
 SYSTEM_PROMPT = """You read broadcast news frame crops and report the
 lower-third graphic (chyron/name strap) if one is visible.
@@ -135,9 +136,20 @@ def _find_chyron_frames(video: Path, segments: list[Segment]) -> list[dict]:
         else:
             events.append(c)
 
+    # Per-speaker quota, then score: text-heavy B-roll (documents, graphics)
+    # during one speaker's narration must not crowd every other speaker's
+    # name strap out of the frame budget.
     events.sort(key=lambda e: e["score"], reverse=True)
-    events = events[:MAX_FRAMES_TO_LLM]
-    events.sort(key=lambda e: e["t"])
+    selected: list[dict] = []
+    per_label: dict[str, int] = {}
+    for e in events:
+        if per_label.get(e["label"], 0) >= PER_LABEL_CAP:
+            continue
+        per_label[e["label"]] = per_label.get(e["label"], 0) + 1
+        selected.append(e)
+        if len(selected) >= MAX_FRAMES_TO_LLM:
+            break
+    events = sorted(selected, key=lambda e: e["t"])
     for e in events:
         ok, jpg = cv2.imencode(".jpg", e.pop("band"),
                                [cv2.IMWRITE_JPEG_QUALITY, 88])
@@ -176,6 +188,8 @@ def read_chyron_crops(
         "text": "Report every legible lower-third as JSON per the schema.",
     })
 
+    # NOTE: no temperature param here — claude-opus-5 rejects sampling
+    # parameters with a 400 (unlike the sonnet-4-6 call in attribute.py).
     response = client.messages.create(
         model=MODEL,
         max_tokens=2000,
