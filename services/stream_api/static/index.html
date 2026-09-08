@@ -58,6 +58,11 @@
   .chip.named { background:var(--accent); color:#fff; }
   .chip.unident { background:#eee; color:#555; }
 
+  /* accessibility */
+  .sr-only { position:absolute; width:1px; height:1px; padding:0; margin:-1px;
+             overflow:hidden; clip:rect(0 0 0 0); white-space:nowrap; border:0; }
+  .seg:focus-visible { outline:2px solid var(--accent); outline-offset:-2px; }
+
   /* protocol log */
   details.log { margin-top:18px; }
   details.log summary { cursor:pointer; font-size:13px; font-weight:700; color:var(--muted); }
@@ -81,9 +86,11 @@
   <div class="layout">
     <div>
       <video id="video" controls autoplay muted playsinline></video>
-      <div class="rail" id="rail"></div>
+      <div id="announcer" class="sr-only" aria-live="polite"></div>
+      <div class="rail" id="rail" aria-label="Processing stages"></div>
       <div id="statusDetail"></div>
-      <div class="meter">
+      <div class="meter" id="meter" role="progressbar" aria-label="Transcript processing edge"
+           aria-valuemin="0" aria-valuemax="100" aria-valuenow="0">
         <div id="edgeBar"></div><div id="namesBar"></div><div id="playheadMark"></div>
       </div>
       <div class="meter-legend">
@@ -101,7 +108,7 @@
 
     <div class="tcol">
       <h2>Transcript <span id="lineCount" style="font-weight:400;text-transform:none"></span></h2>
-      <div id="transcript"></div>
+      <div id="transcript" aria-label="Video transcript — press Enter on a line to jump the video there"></div>
     </div>
   </div>
 </div>
@@ -151,7 +158,8 @@ function setStage(stage) {
     // only stages this job actually went through light up — 'transcribing'
     // stays neutral on the caption-first path
     if (seenStages.has('cached')) { if (seenStages.has(s) || s === 'done') el.classList.add('done'); continue; }
-    if (s === stage && stage !== 'done') el.classList.add('active');
+    el.removeAttribute('aria-current');
+    if (s === stage && stage !== 'done') { el.classList.add('active'); el.setAttribute('aria-current', 'step'); }
     else if (seenStages.has(s)) el.classList.add('done');
   }
 }
@@ -177,15 +185,75 @@ function renderLine(l) {
   if (!el) {
     el = document.createElement('div');
     el.className = 'seg future'; el.id = 'seg-' + l.i; el.dataset.start = l.start;
+    el.setAttribute('role', 'button');
+    el.setAttribute('tabindex', '0');
     box.appendChild(el);
   }
+  el.setAttribute('aria-label', `Jump to ${fmt(l.start)}`);
   el.innerHTML = `<span class="t">${fmt(l.start)}</span>${chipHtml(l)}<div class="text" dir="auto">${l.text}</div>`;
   document.getElementById('lineCount').textContent = `· ${lines.length} lines`;
 }
-box.addEventListener('click', e => {
-  const el = e.target.closest('.seg'); if (!el) return;
+function seekTo(el) {
   video.currentTime = parseFloat(el.dataset.start) + 0.01; video.play();
+}
+box.addEventListener('click', e => {
+  const el = e.target.closest('.seg'); if (el) seekTo(el);
 });
+box.addEventListener('keydown', e => {
+  if (e.key !== 'Enter' && e.key !== ' ') return;
+  const el = e.target.closest('.seg'); if (!el) return;
+  e.preventDefault(); seekTo(el);
+});
+
+/* screen-reader announcements: key transitions only, never per-line */
+const announcer = document.getElementById('announcer');
+const announce = t => { announcer.textContent = t; };
+const STAGE_WORDS = {
+  captions: 'Checking for broadcaster captions.',
+  audio: 'Extracting audio.',
+  transcribing: 'Transcribing audio.',
+  diarizing: 'Identifying speaker turns.',
+  attributing: 'Resolving speaker names.',
+  chyron: 'Reading on-screen name graphics.',
+  done: 'Transcript complete.',
+  cached: 'Transcript loaded instantly from cache.',
+};
+
+/* native caption track, generated from the same line data (works in
+   fullscreen and with assistive tech; regenerated as names improve) */
+let trackEl = null, trackTimer = null;
+function plainSpeaker(l) {
+  if (!l.label) return '';
+  if (!mapping) return 'Speaker ' + (parseInt(l.label.split('_')[1] || '0', 10) + 1);
+  const m = mapping[l.label];
+  if (!m || m.name === 'Unidentified') return (m && m.role) || '';
+  return m.name;
+}
+function vttTs(t) {
+  const h = String(Math.floor(t/3600)).padStart(2,'0');
+  const m = String(Math.floor((t%3600)/60)).padStart(2,'0');
+  const s = (t%60).toFixed(3).padStart(6,'0');
+  return `${h}:${m}:${s}`;
+}
+function refreshTrack() {
+  clearTimeout(trackTimer);
+  trackTimer = setTimeout(() => {
+    const cues = lines.filter(Boolean).map(l => {
+      const who = plainSpeaker(l);
+      return `${vttTs(l.start)} --> ${vttTs(l.end)}\n${who ? who + ': ' : ''}${l.text}`;
+    });
+    if (!cues.length) return;
+    const wasShowing = !trackEl || trackEl.track.mode === 'showing';
+    const blob = new Blob(['WEBVTT\n\n' + cues.join('\n\n') + '\n'], {type: 'text/vtt'});
+    const el = document.createElement('track');
+    el.kind = 'captions'; el.label = 'English (pipeline)'; el.srclang = 'en';
+    el.src = URL.createObjectURL(blob);
+    if (trackEl) { URL.revokeObjectURL(trackEl.src); trackEl.remove(); }
+    trackEl = el;
+    video.appendChild(el);
+    el.track.mode = wasShowing ? 'showing' : 'disabled';
+  }, 800);
+}
 
 /* ---- SSE consumption ---- */
 const es = new EventSource(`/api/stream/${VIDEO_ID}${FRESH ? '?fresh=1' : ''}`);
@@ -197,25 +265,35 @@ es.onmessage = msg => {
   if (ev.type === 'status') {
     setStage(ev.stage);
     document.getElementById('statusDetail').textContent = ev.detail || '';
+    if (ev.stage === 'error') announce('Processing failed: ' + (ev.detail || ''));
+    else if (STAGE_WORDS[ev.stage]) announce(STAGE_WORDS[ev.stage]);
   } else if (ev.type === 'lines') {
+    const first = !lines.length;
     for (const l of ev.lines) { lines[l.i] = l; renderLine(l); }
-    updateMeter();
+    updateMeter(); refreshTrack();
+    if (first) announce('Transcript text is arriving.');
   } else if (ev.type === 'replace_lines') {
     // retroactive re-segmentation: ASR lines split at speaker boundaries
     lines.length = 0; box.innerHTML = ''; activeIdx = -1;
     for (const l of ev.lines) { lines[l.i] = l; renderLine(l); }
-    updateMeter();
+    updateMeter(); refreshTrack();
   } else if (ev.type === 'speakers_assigned') {
     for (const a of ev.assignments) if (lines[a.i]) { lines[a.i].label = a.label; renderLine(lines[a.i]); }
+    refreshTrack();
+    announce('Speaker turns assigned to transcript lines.');
   } else if (ev.type === 'names') {
     mapping = ev.mapping;
     lines.forEach(renderLine);
-    updateMeter(true);
-    if (ev.review_status && ev.review_status !== 'auto_ok')
+    updateMeter(true); refreshTrack();
+    const named = Object.values(ev.mapping).filter(m => m.name !== 'Unidentified').map(m => m.name);
+    announce('Speaker names updated' + (named.length ? ': ' + named.join(', ') + '.' : '.'));
+    if (ev.review_status && ev.review_status !== 'auto_ok') {
       document.getElementById('statusDetail').textContent =
         `flagged ${ev.review_status}: ` + (ev.warnings || []).slice(0,1).join('');
+      announce('Transcript flagged for editorial review.');
+    }
   } else if (ev.type === 'done') {
-    setStage('done'); es.close();
+    setStage('done'); announce(STAGE_WORDS.done); es.close();
   }
 };
 
@@ -223,9 +301,15 @@ es.onmessage = msg => {
 function updateMeter(named) {
   const dur = video.duration || (lines.length ? lines[lines.length-1].end : 0) || 1;
   const edge = lines.length ? lines[lines.length-1].end : 0;
-  document.getElementById('edgeBar').style.width = Math.min(100, edge/dur*100) + '%';
-  if (named) document.getElementById('namesBar').style.width = Math.min(100, edge/dur*100) + '%';
+  const pct = Math.min(100, edge/dur*100);
+  document.getElementById('edgeBar').style.width = pct + '%';
+  if (named) document.getElementById('namesBar').style.width = pct + '%';
+  const meter = document.getElementById('meter');
+  meter.setAttribute('aria-valuenow', Math.round(pct));
+  meter.setAttribute('aria-valuetext',
+    `text processed to ${fmt(edge)} of ${fmt(dur)}` + (named ? ', speaker names applied' : ''));
 }
+const SCROLL_BEHAVIOR = matchMedia('(prefers-reduced-motion: reduce)').matches ? 'auto' : 'smooth';
 let activeIdx = -1;
 video.addEventListener('timeupdate', () => {
   const t = video.currentTime;
@@ -241,7 +325,7 @@ video.addEventListener('timeupdate', () => {
   if (prev) prev.classList.remove('active');
   if (idx !== -1) {
     const cur = document.getElementById('seg-' + idx);
-    if (cur) { cur.classList.add('active'); cur.scrollIntoView({block:'nearest', behavior:'smooth'}); }
+    if (cur) { cur.classList.add('active'); cur.scrollIntoView({block:'nearest', behavior:SCROLL_BEHAVIOR}); }
   }
   activeIdx = idx;
 });
