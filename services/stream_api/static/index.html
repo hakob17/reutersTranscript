@@ -12,7 +12,22 @@
   * { box-sizing: border-box; }
   body { margin:0; background:var(--bg); color:var(--ink);
          font-family:"Segoe UI",-apple-system,Arial,sans-serif; line-height:1.5; }
-  .wrap { max-width:1200px; margin:0 auto; padding:24px 20px 60px; }
+  .wrap { max-width:1500px; margin:0 auto; padding:24px 20px 60px; }
+  .app { display:grid; grid-template-columns:270px minmax(0,1fr); gap:28px; align-items:start; }
+  @media (max-width:1000px){ .app { grid-template-columns:1fr; } }
+
+  /* left video menu */
+  .vnav { border-top:3px solid var(--ink); position:sticky; top:12px;
+          max-height:calc(100vh - 40px); overflow-y:auto; }
+  @media (max-width:1000px){ .vnav { position:static; max-height:220px; } }
+  .vnav h2 { font-size:12px; text-transform:uppercase; letter-spacing:.8px;
+             color:var(--muted); margin:10px 0 6px; }
+  .vnav-item { display:block; padding:8px 10px; font-size:13px; line-height:1.4;
+               color:var(--ink); text-decoration:none;
+               border-bottom:1px solid var(--line); border-left:3px solid transparent; }
+  .vnav-item:hover { background:#fafafa; }
+  .vnav-item.active { border-left-color:var(--accent); background:var(--active-bg); font-weight:700; }
+  .vnav-item .vid { color:var(--muted); font-size:11px; display:block; }
   header.masthead { border-bottom:1px solid var(--line); padding:14px 0; margin-bottom:18px; }
   .brand { font-weight:700; font-size:20px; } .brand .dot { color:var(--accent); }
   h1 { font-size:24px; margin:6px 0 2px; }
@@ -75,11 +90,14 @@
 <div class="wrap">
   <header class="masthead"><div class="brand">Wire<span class="dot">.</span>Transcript <span style="font-weight:400;color:var(--muted)">· on-demand streaming demo</span></div></header>
 
+  <div class="app">
+  <nav class="vnav" id="videoNav" aria-label="Videos"><h2>Videos</h2></nav>
+  <main>
   <h1 id="title">Loading…</h1>
   <div class="sub">The video plays immediately from the CDN. The transcript is processed
     <b>on demand, right now</b>, and streams in beside it — text first, then diarized
     speakers, then names, each as a retroactive update. Captioned videos use the CDN's
-    own VTT (text edge in seconds); uncaptioned ones (e.g. Arabic) stream chunked
+    own VTT (text edge in seconds); uncaptioned ones stream chunked
     Whisper ASR instead. Reload after completion to see the cache path.
     <span id="videoLinks"></span></div>
 
@@ -111,6 +129,8 @@
       <div id="transcript" aria-label="Video transcript — press Enter on a line to jump the video there"></div>
     </div>
   </div>
+  </main>
+  </div>
 </div>
 
 <script src="https://cdn.jsdelivr.net/npm/hls.js@1.5.20/dist/hls.min.js"></script>
@@ -129,11 +149,20 @@ fetch('/api/videos').then(r => r.json()).then(catalogue => {
   const entry = catalogue[VIDEO_ID];
   if (!entry) return;
   document.getElementById('title').textContent = entry.title;
+  document.getElementById('title').setAttribute('dir', 'auto');
   document.title = entry.title + ' — streaming demo';
-  document.getElementById('videoLinks').innerHTML = ' Videos: ' +
-    Object.entries(catalogue).map(([id, e]) =>
-      id === VIDEO_ID ? `<b>${id}</b>` : `<a href="?v=${id}">${id}</a>`).join(' · ') +
-    ` &nbsp;·&nbsp; <a href="?v=${VIDEO_ID}&fresh=1" title="skip the cache and run the pipeline live">⟳ reprocess live</a>` +
+
+  // left vertical menu: one entry per video, titles in their own script
+  const nav = document.getElementById('videoNav');
+  nav.insertAdjacentHTML('beforeend', Object.entries(catalogue).map(([id, e]) =>
+    `<a class="vnav-item${id === VIDEO_ID ? ' active' : ''}" href="?v=${id}"
+        dir="auto" ${id === VIDEO_ID ? 'aria-current="page"' : ''}>${e.title}
+        <span class="vid" dir="ltr">${id}</span></a>`).join(''));
+  const activeItem = nav.querySelector('.vnav-item.active');
+  if (activeItem) activeItem.scrollIntoView({block: 'nearest'});
+
+  document.getElementById('videoLinks').innerHTML =
+    ` <a href="?v=${VIDEO_ID}&fresh=1" title="skip the cache and run the pipeline live">⟳ reprocess live</a>` +
     (FRESH ? ' <b style="color:var(--accent)">(live run — cache skipped)</b>' : '');
   if (video.canPlayType('application/vnd.apple.mpegurl')) video.src = entry.url;
   else { const h = new Hls(); h.loadSource(entry.url); h.attachMedia(video); }
