@@ -74,11 +74,121 @@ VIDEOS = {
         "url": "https://ajo.prod.reuters.tv/v3/playlist/1920x1080/778738/rendition.m3u8",
         "title": "Epstein accusers face new waves of harassment after speaking out",
     },
-    # Arabic — CDN serves auto-generated Arabic captions (mislabeled en_US),
-    # so this takes the caption-first path with RTL rendering.
+    # Arabic (reuters.com/ar articles, Aug-Sep 2020). Most carry
+    # auto-generated Arabic captions under a mislabeled en_US rendition, so
+    # they take the caption-first path with RTL rendering; any without
+    # captions fall to chunked Whisper automatically.
     "404233": {
         "url": "https://ajo.prod.reuters.tv/v3/playlist/404233/master.m3u8",
         "title": "شرطة برلين تحتجز 300 وتفرق مظاهرة ضد قيود فيروس كورونا",
+    },
+    "404327": {
+        "url": "https://ajo.prod.reuters.tv/v3/playlist/404327/master.m3u8",
+        "title": "مستشار ترامب: دول عربية وإسلامية أخرى ستتبع الإمارات وتطبع علاقاتها مع إسرائيل",
+    },
+    "404389": {
+        "url": "https://ajo.prod.reuters.tv/v3/playlist/404389/master.m3u8",
+        "title": "فرقة تحيي حفلا على الهواء عبر السيارات بإندونيسيا مع احتدام حالات الإصابة بكورونا",
+    },
+    "404475": {
+        "url": "https://ajo.prod.reuters.tv/v3/playlist/404475/master.m3u8",
+        "title": "مسؤولون إسرائيليون وأمريكيون يصلون للإمارات وكوشنر يحث الفلسطينيين على التفاوض",
+    },
+    "404918": {
+        "url": "https://ajo.prod.reuters.tv/v3/playlist/404918/master.m3u8",
+        "title": "ابتسامة عريضة ودعاء للبنان في أول لقاء مفتوح للبابا فرنسيس منذ ستة أشهر",
+    },
+    "404963": {
+        "url": "https://ajo.prod.reuters.tv/v3/playlist/404963/master.m3u8",
+        "title": "افتتاح مهرجان البندقية بتعبير عن التضامن مع صناعة السينما المتضررة من جائحة كورونا",
+    },
+    "404878": {
+        "url": "https://ajo.prod.reuters.tv/v3/playlist/404878/master.m3u8",
+        "title": "بدء محاكمة متورطين في هجوم على مجلة شارلي إبدو في فرنسا",
+    },
+    "405217": {
+        "url": "https://ajo.prod.reuters.tv/v3/playlist/405217/master.m3u8",
+        "title": "البولشوي الروسي يفتح أبوابه مجددا بعرض لأوبرا (دون كارلو)",
+    },
+    "405230": {
+        "url": "https://ajo.prod.reuters.tv/v3/playlist/405230/master.m3u8",
+        "title": "برنامج الغذاء العالمي: انفجار بيروت يضر بطاقة استيعاب الحبوب لكن الإمدادات لا تزال تتدفق",
+    },
+    "405065": {
+        "url": "https://ajo.prod.reuters.tv/v3/playlist/405065/master.m3u8",
+        "title": "الأمم المتحدة تحذر من تخزين السلاح في ليبيا وخروج وباء كورونا عن السيطرة",
+    },
+    "405179": {
+        "url": "https://ajo.prod.reuters.tv/v3/playlist/405179/master.m3u8",
+        "title": "الأمير البريطاني هاري وزوجته ميجان يوقعان عقدا مع نتفليكس لإنتاج برامج",
+    },
+    "405447": {
+        "url": "https://ajo.prod.reuters.tv/v3/playlist/405447/master.m3u8",
+        "title": "أغاني فرانك سيناترا قد تنقذ الفيل كافان في باكستان",
+    },
+    "405474": {
+        "url": "https://ajo.prod.reuters.tv/v3/playlist/405474/master.m3u8",
+        "title": "الآلاف يحتجون في باكستان على إعادة نشر رسوم النبي محمد في فرنسا",
+    },
+    "405239": {
+        "url": "https://ajo.prod.reuters.tv/v3/playlist/405239/master.m3u8",
+        "title": "بحرية سريلانكا تستبعد حدوث تسرب نفطي من ناقلة عملاقة شب فيها حريق",
+    },
+    "405406": {
+        "url": "https://ajo.prod.reuters.tv/v3/playlist/405406/master.m3u8",
+        "title": "اليونان تطلب من تركيا الكف عن \"الاستفزازات\" ليبدأ الحوار",
+    },
+    "405249": {
+        "url": "https://ajo.prod.reuters.tv/v3/playlist/405249/master.m3u8",
+        "title": "إسرائيل تعلن إجراءات عزل جزئية بعد زيادة الإصابات بكورونا",
+    },
+    "405538": {
+        "url": "https://ajo.prod.reuters.tv/v3/playlist/405538/master.m3u8",
+        "title": "سينوفاك وسي.إن.بي.جي الصينيتان تختبران لقاحات كورونا في مزيد من الدول",
+    },
+    "405492": {
+        "url": "https://ajo.prod.reuters.tv/v3/playlist/405492/master.m3u8",
+        "title": "مطعم سوشي في اليابان يستعين بلاعبي كمال أجسام لتوصيل الطلبات",
+    },
+    "405502": {
+        "url": "https://ajo.prod.reuters.tv/v3/playlist/405502/master.m3u8",
+        "title": "عمال إنقاذ يبحثون عن أحد الناجين تحت الأنقاض في بيروت لليوم الثاني",
+    },
+    "405509": {
+        "url": "https://ajo.prod.reuters.tv/v3/playlist/405509/master.m3u8",
+        "title": "مقتل 17 مصليا في انفجار خط أنابيب غاز قرب مسجد ببنجلادش",
+    },
+    "405587": {
+        "url": "https://ajo.prod.reuters.tv/v3/playlist/405587/master.m3u8",
+        "title": "الشرطة في هونج كونج تعتقل متظاهرين يحتجون على تأجيل الانتخابات",
+    },
+    "405714": {
+        "url": "https://ajo.prod.reuters.tv/v3/playlist/405714/master.m3u8",
+        "title": "اتفاق بريكست يواجه أزمة جديدة بعد تهديد بريطانيا بتقويضه",
+    },
+    "405658": {
+        "url": "https://ajo.prod.reuters.tv/v3/playlist/405658/master.m3u8",
+        "title": "نمساوي يحطم رقما قياسيا بالوقوف أكثر من ساعتين ونصف الساعة في صندوق مملوء بالثلج",
+    },
+    "406147": {
+        "url": "https://ajo.prod.reuters.tv/v3/playlist/406147/master.m3u8",
+        "title": "نجاة نائب رئيس أفغانستان من تفجير في كابول ومقتل 10",
+    },
+    "406224": {
+        "url": "https://ajo.prod.reuters.tv/v3/playlist/406224/master.m3u8",
+        "title": "شردتهم فيضانات قياسية.. عشرات الآلاف من السودانيين يتنظرون المساعدات",
+    },
+    "406188": {
+        "url": "https://ajo.prod.reuters.tv/v3/playlist/406188/master.m3u8",
+        "title": "\"بيروت ترنم للأمل\" من داخل كنيسة دمرها انفجار المرفأ",
+    },
+    "406164": {
+        "url": "https://ajo.prod.reuters.tv/v3/playlist/406164/master.m3u8",
+        "title": "فرار الآلاف بعد اندلاع حريق في مخيم مكتظ باللاجئين في اليونان",
+    },
+    "406248": {
+        "url": "https://ajo.prod.reuters.tv/v3/playlist/406248/master.m3u8",
+        "title": "الحوثيون يعلقون الرحلات الجوية إلى صنعاء مع اشتداد الحرب الاقتصادية",
     },
 }
 
