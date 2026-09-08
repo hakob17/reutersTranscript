@@ -138,7 +138,12 @@ rail.innerHTML = STAGES.map(s => `<span class="stage" id="st-${s}">${s}</span>`)
 const seenStages = new Set();
 function setStage(stage) {
   if (stage === 'cached') { seenStages.add('cached'); return; }
-  if (stage === 'error') { rail.insertAdjacentHTML('beforeend','<span class="stage error">error</span>'); return; }
+  if (stage === 'error') {
+    if (!document.getElementById('st-error'))
+      rail.insertAdjacentHTML('beforeend','<span class="stage error" id="st-error">error</span>');
+    es.close();  // stop SSE auto-reconnect from replaying the failed log
+    return;
+  }
   seenStages.add(stage);
   for (const s of STAGES) {
     const el = document.getElementById('st-'+s);

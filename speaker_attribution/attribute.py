@@ -67,10 +67,12 @@ def attribute_speakers(
         f"DIARIZED TRANSCRIPT:\n{_transcript_for_prompt(segments)}"
     )
 
+    # NOTE: anthropic SDK 1.x removed the temperature kwarg from
+    # Messages.create — passing it raises TypeError. Run-to-run naming
+    # variance is instead handled by the review gate + chyron evidence.
     response = client.messages.create(
         model=MODEL,
         max_tokens=2000,
-        temperature=0,  # attribution must be repeatable, not a sampling draw
         system=SYSTEM_PROMPT,
         messages=[{"role": "user", "content": user_prompt}],
     )
