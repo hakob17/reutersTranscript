@@ -351,8 +351,12 @@ class Registry:
         never two parallel jobs for one video)."""
         with self.lock:
             job = self.jobs.get(video_id)
-            if job is not None and not (fresh and job.done):
-                return job                       # dedup: second viewer attaches
+            if job is not None:
+                failed = job.done and any(
+                    e.get("stage") == "error" for e in job.events)
+                if not failed and not (fresh and job.done):
+                    return job                   # dedup: second viewer attaches
+                # failed jobs are not sticky — fall through and retry live
 
             cached = CACHE_DIR / f"{video_id}.events.json"
             if fresh:
