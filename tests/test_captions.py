@@ -20,7 +20,7 @@ Happy to be here.
 NOTE this block has no timestamp and must be ignored
 
 4
-00:01:02.000 --> 01:00:03.500
+00:01:02.000 --> 01:00:03.500 line:-3 align:center
 An hour-long cue with an hours field.
 """
 
@@ -33,8 +33,9 @@ def test_parse_vtt_cues():
     # multi-line cue joined, inline tags stripped
     assert "Juan García," in cues[1]["text"]
     assert "<b>" not in cues[1]["text"]
-    # hours field parsed
+    # hours field parsed; cue settings (line:-3 align:center) not in text
     assert cues[3]["end"] == 3600 + 3.5
+    assert cues[3]["text"] == "An hour-long cue with an hours field."
 
 
 def test_assign_cue_speakers_overlap_and_fallback():

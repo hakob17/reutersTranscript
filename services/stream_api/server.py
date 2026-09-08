@@ -74,6 +74,12 @@ VIDEOS = {
         "url": "https://ajo.prod.reuters.tv/v3/playlist/1920x1080/778738/rendition.m3u8",
         "title": "Epstein accusers face new waves of harassment after speaking out",
     },
+    # Arabic — CDN serves auto-generated Arabic captions (mislabeled en_US),
+    # so this takes the caption-first path with RTL rendering.
+    "404233": {
+        "url": "https://ajo.prod.reuters.tv/v3/playlist/404233/master.m3u8",
+        "title": "شرطة برلين تحتجز 300 وتفرق مظاهرة ضد قيود فيروس كورونا",
+    },
 }
 
 _asr_model = None

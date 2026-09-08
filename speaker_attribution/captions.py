@@ -59,7 +59,10 @@ def parse_vtt(text: str) -> list[dict]:
             continue
         start = _ts_to_seconds(m.group(1), m.group(2), m.group(3), m.group(4))
         end = _ts_to_seconds(m.group(5), m.group(6), m.group(7), m.group(8))
-        lines = block[m.end():].strip().splitlines()
+        # anything else on the timestamp line is cue settings (line:-3,
+        # align:center, ...) — text starts on the following line
+        tail = block[m.end():].split("\n", 1)
+        lines = tail[1].strip().splitlines() if len(tail) > 1 else []
         cue_text = _TAG.sub("", " ".join(line.strip() for line in lines)).strip()
         if cue_text:
             cues.append({"start": start, "end": end, "text": cue_text})
