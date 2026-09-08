@@ -70,6 +70,7 @@ def attribute_speakers(
     response = client.messages.create(
         model=MODEL,
         max_tokens=2000,
+        temperature=0,  # attribution must be repeatable, not a sampling draw
         system=SYSTEM_PROMPT,
         messages=[{"role": "user", "content": user_prompt}],
     )
