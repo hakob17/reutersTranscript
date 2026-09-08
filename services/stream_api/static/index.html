@@ -108,7 +108,9 @@
 
 <script src="https://cdn.jsdelivr.net/npm/hls.js@1.5.20/dist/hls.min.js"></script>
 <script>
-const VIDEO_ID = new URLSearchParams(location.search).get('v') || '782809';
+const PARAMS = new URLSearchParams(location.search);
+const VIDEO_ID = PARAMS.get('v') || '782809';
+const FRESH = PARAMS.get('fresh') === '1';
 
 const video = document.getElementById('video');
 const box = document.getElementById('transcript');
@@ -123,7 +125,9 @@ fetch('/api/videos').then(r => r.json()).then(catalogue => {
   document.title = entry.title + ' — streaming demo';
   document.getElementById('videoLinks').innerHTML = ' Videos: ' +
     Object.entries(catalogue).map(([id, e]) =>
-      id === VIDEO_ID ? `<b>${id}</b>` : `<a href="?v=${id}">${id}</a>`).join(' · ');
+      id === VIDEO_ID ? `<b>${id}</b>` : `<a href="?v=${id}">${id}</a>`).join(' · ') +
+    ` &nbsp;·&nbsp; <a href="?v=${VIDEO_ID}&fresh=1" title="skip the cache and run the pipeline live">⟳ reprocess live</a>` +
+    (FRESH ? ' <b style="color:var(--accent)">(live run — cache skipped)</b>' : '');
   if (video.canPlayType('application/vnd.apple.mpegurl')) video.src = entry.url;
   else { const h = new Hls(); h.loadSource(entry.url); h.attachMedia(video); }
 });
@@ -179,7 +183,7 @@ box.addEventListener('click', e => {
 });
 
 /* ---- SSE consumption ---- */
-const es = new EventSource(`/api/stream/${VIDEO_ID}`);
+const es = new EventSource(`/api/stream/${VIDEO_ID}${FRESH ? '?fresh=1' : ''}`);
 es.onmessage = msg => {
   const ev = JSON.parse(msg.data);
   logEl.textContent += JSON.stringify(ev).slice(0, 220) + '\n';

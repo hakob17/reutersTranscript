@@ -345,20 +345,27 @@ class Registry:
         self.jobs: dict[str, Job] = {}
         self.lock = threading.Lock()
 
-    def get_or_start(self, video_id: str, url: str) -> Job:
+    def get_or_start(self, video_id: str, url: str, fresh: bool = False) -> Job:
+        """fresh=True discards any finished job + cache and reprocesses live.
+        A job still RUNNING is always attached to (dedup wins over fresh —
+        never two parallel jobs for one video)."""
         with self.lock:
             job = self.jobs.get(video_id)
-            if job is not None:
+            if job is not None and not (fresh and job.done):
                 return job                       # dedup: second viewer attaches
+
+            cached = CACHE_DIR / f"{video_id}.events.json"
+            if fresh:
+                cached.unlink(missing_ok=True)
 
             job = Job(video_id, url)
             self.jobs[video_id] = job
-            cached = CACHE_DIR / f"{video_id}.events.json"
-            if cached.exists():                  # cache: replay, no processing
+            if not fresh and cached.exists():    # cache: replay, no processing
                 job.events = json.loads(cached.read_text(encoding="utf-8"))
                 job.events.insert(0, {"type": "status", "stage": "cached",
                                       "detail": "served from cache — processed "
-                                                "on a previous view"})
+                                                "on a previous view (add "
+                                                "fresh=1 to reprocess live)"})
                 job.done = True
             else:
                 threading.Thread(target=job.run, daemon=True).start()
@@ -380,13 +387,13 @@ def videos():
 
 
 @app.get("/api/stream/{video_id}")
-def stream(video_id: str):
+def stream(video_id: str, fresh: int = 0):
     entry = VIDEOS.get(video_id)
     if entry is None:
         return StreamingResponse(
             iter([f"data: {json.dumps({'type': 'status', 'stage': 'error', 'detail': 'unknown video id'})}\n\n"]),
             media_type="text/event-stream")
-    job = registry.get_or_start(video_id, entry["url"])
+    job = registry.get_or_start(video_id, entry["url"], fresh=bool(fresh))
 
     def gen():
         sent = 0
