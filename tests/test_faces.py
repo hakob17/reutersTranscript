@@ -75,6 +75,38 @@ def test_turn_binding_needs_margin():
     assert tracks[0]["speaker_label"] is None
 
 
+def _track_with_mar(tid, t0, t1, x, mars):
+    tr = _track(tid, t0, t1, x)
+    for i, b in enumerate(tr["boxes"]):
+        b["mar"] = mars[i % len(mars)]
+    return tr
+
+
+def test_turn_binding_lip_motion_resolves_two_shot():
+    # both faces visible; track 1's mouth oscillates, track 2's is still
+    talking = _track_with_mar(1, 0.0, 10.0, 0.2, [0.1, 0.4, 0.15, 0.45])
+    still = _track_with_mar(2, 0.0, 10.0, 0.7, [0.12, 0.12, 0.13, 0.12])
+    bind_tracks_to_turns([talking, still], [(1.0, 9.0, "SPEAKER_01")])
+    assert talking["speaker_label"] == "SPEAKER_01"
+    assert still["speaker_label"] is None
+
+
+def test_turn_binding_lip_motion_needs_margin():
+    # both mouths move similarly -> ambiguous -> nothing binds
+    a = _track_with_mar(1, 0.0, 10.0, 0.2, [0.1, 0.3, 0.1, 0.3])
+    b = _track_with_mar(2, 0.0, 10.0, 0.7, [0.2, 0.4, 0.2, 0.4])
+    bind_tracks_to_turns([a, b], [(1.0, 9.0, "SPEAKER_00")])
+    assert a["speaker_label"] is None and b["speaker_label"] is None
+
+
+def test_turn_binding_lip_motion_requires_all_measured():
+    # one face has no MAR data -> cannot compare fairly -> nothing binds
+    talking = _track_with_mar(1, 0.0, 10.0, 0.2, [0.1, 0.4, 0.15, 0.45])
+    unmeasured = _track(2, 0.0, 10.0, 0.7)
+    bind_tracks_to_turns([talking, unmeasured], [(1.0, 9.0, "SPEAKER_00")])
+    assert talking["speaker_label"] is None
+
+
 def test_binding_conflict_unbinds():
     tracks = [_track(1, 0.0, 10.0, 0.4)]
     warnings = bind_names_to_tracks(tracks, [
