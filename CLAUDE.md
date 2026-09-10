@@ -74,12 +74,17 @@ frames to the vision model — detection gates what reaches the API.
   failure falls back to ASR silently — keep that contract.
 - `whisperx.diarize` is NOT auto-imported by `import whisperx` — use
   `from whisperx.diarize import DiarizationPipeline` (transcribe.py does).
-- Face gallery policy: enroll ONLY chyron-named tracks, tracks linked to a
-  high-confidence named speaker, Wikidata-verified public figures, or manual
-  headshots — never anonymous tracks. Embeddings are stripped before any
-  event leaves the server. Speaker-evidence tracks must get `name` set at
-  enrollment or they self-match (sim 1.0). Dark face crops (luma < 50) are
-  never embedded — low-light embeddings collapse into false matches.
+- Face gallery policy: the PERSISTENT gallery (gallery.json) holds only
+  Wikidata-verified public figures and manual headshots. People named on air
+  in a video (chyron, or linked to a high-confidence named speaker) are
+  enrolled for THAT video only and never saved — no cross-video biometric
+  store of private individuals (e.g. abuse survivors named in a strap).
+  Never enroll anonymous tracks. Embeddings are stripped before any event
+  leaves the server. Speaker-evidence tracks must get `name` set at
+  enrollment or they self-match (sim 1.0). Dark (luma < 50) and profile
+  (yaw > 0.5) faces are never embedded; tracks never extend across a face
+  whose embedding disagrees (a dissolve once put a victim's name on
+  Epstein's face).
 - Face voting excludes ANY narrator/voice-over label (named or not): lip
   motion can't tell "speaking now" from "speaking in archive footage".
 - Chyron detection has two paths: `_text_score` on the lower band, and

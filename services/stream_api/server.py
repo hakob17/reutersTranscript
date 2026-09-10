@@ -559,13 +559,15 @@ class Job:
             bind_tracks_to_turns(tracks, turns, exclude_labels=vo_labels)
             for i, tr in enumerate(tracks, 1):  # small stable display ids
                 tr["id"] = i
-            # face gallery: enroll evidence-named identities, then try to
-            # recognize everyone else (speaking or not). Enrollment is
-            # restricted to broadcast-named people by design (DESIGN.md §9).
+            # face gallery: the persistent gallery holds public figures only
+            # (Wikidata/manual seeding). People named on air in THIS video
+            # (chyron, or a high-confidence named speaker) are enrolled into
+            # this job's in-memory copy only and never saved — no cross-video
+            # biometric store of private individuals (DESIGN.md §9).
             enrolled = recognized = 0
             try:
                 from speaker_attribution.gallery import (
-                    enroll, is_confident, load_gallery, match, save_gallery)
+                    enroll, is_confident, load_gallery, match)
                 gallery = load_gallery()
                 for tr in tracks:
                     if "emb" not in tr:
@@ -592,7 +594,6 @@ class Job:
                         tr["gallery"] = score
                         tr["name_tentative"] = not is_confident(score)
                         recognized += 1
-                save_gallery(gallery)
             except Exception:
                 pass
             for tr in tracks:
