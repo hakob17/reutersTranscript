@@ -524,6 +524,12 @@ es.onmessage = msg => {
       ? `Speaker highlighting available for ${linked.length} on-screen appearances.`
       : 'Face pass complete; no speaker faces could be confidently linked.');
     drawFaces();
+  } else if (ev.type === 'costs') {
+    const parts = Object.entries(ev.stages || {})
+      .map(([k, v]) => `${k} $${v.toFixed(3)}`).join(' · ');
+    document.getElementById('statusDetail').textContent =
+      `Measured LLM spend this run: $${(ev.total || 0).toFixed(3)}` +
+      (parts ? ` (${parts})` : '');
   } else if (ev.type === 'done') {
     setStage('done'); announce(STAGE_WORDS.done); es.close();
   }
