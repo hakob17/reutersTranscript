@@ -33,13 +33,17 @@ MIN_TEXT_SCORE = 0.006      # text-like area fraction to count as a chyron
 EVENT_GAP_S = 1.0           # samples closer than this merge into one event
 MAX_FRAMES_TO_LLM = 16
 PER_LABEL_CAP = 3           # frame budget per speaker — keeps crop selection diverse
+STRAP_MIN_AREA, STRAP_MAX_AREA = 0.006, 0.08   # strap box, fraction of frame
+STRAP_ASPECT = (2.0, 8.0)   # name straps are wide, short boxes
 
 SYSTEM_PROMPT = """You read broadcast news frame crops and report the
 lower-third graphic (chyron/name strap) if one is visible.
 
-Each image is the LOWER PORTION of a frame, labeled with the diarization
-speaker label that is talking at that moment. A lower-third names the person
-currently speaking on camera.
+Each image is the LOWER PORTION of a frame — or a tight crop around a
+detected name-strap box — labeled with the diarization speaker label that is
+talking at that moment. A lower-third names the person currently speaking on
+camera. Report a sighting for EVERY image that shows a legible name strap;
+do not skip any.
 
 Rules:
 - Report ONLY text actually visible in a lower-third graphic. Never guess or
@@ -85,6 +89,46 @@ def _text_score(band_bgr) -> float:
     return area / float(h_band * w_band)
 
 
+def _find_strap_box(frame_bgr):
+    """Find a broadcast name strap: a bright, low-saturation, box-shaped
+    region with dark text inside, in the lower part of the frame.
+
+    Complements _text_score, which fails on busy backgrounds (foliage swamps
+    the gradient/Otsu step and everything merges into one rejected blob —
+    observed: a clear 'Haley Robson' strap scored 0.0). Returns (x, y, w, h)
+    in frame pixels, or None."""
+    import cv2
+
+    H, W = frame_bgr.shape[:2]
+    y0 = int(H * 0.55)
+    region = frame_bgr[y0:int(H * 0.95), :]
+    hsv = cv2.cvtColor(region, cv2.COLOR_BGR2HSV)
+    mask = cv2.inRange(hsv, (0, 0, 190), (180, 50, 255))
+    k = max(3, W // 128)                        # scale with resolution
+    mask = cv2.morphologyEx(mask, cv2.MORPH_CLOSE,
+                            cv2.getStructuringElement(cv2.MORPH_RECT,
+                                                      (k, max(3, k // 2))))
+    contours, _ = cv2.findContours(mask, cv2.RETR_EXTERNAL,
+                                   cv2.CHAIN_APPROX_SIMPLE)
+    best, best_area = None, 0
+    for c in contours:
+        x, y, w, h = cv2.boundingRect(c)
+        area = w * h
+        if not STRAP_MIN_AREA * W * H <= area <= STRAP_MAX_AREA * W * H:
+            continue
+        if not STRAP_ASPECT[0] <= w / max(h, 1) <= STRAP_ASPECT[1]:
+            continue
+        if cv2.contourArea(c) / area < 0.85:    # must be box-shaped
+            continue
+        inner = cv2.cvtColor(region[y:y + h, x:x + w], cv2.COLOR_BGR2GRAY)
+        dark = float((inner < 110).mean())
+        if not 0.03 <= dark <= 0.45:            # needs text, not a blank patch
+            continue
+        if area > best_area:
+            best, best_area = (x, y + y0, w, h), area
+    return best
+
+
 def _find_chyron_frames(video: Path, segments: list[Segment]) -> list[dict]:
     """Decode once, sample inside speech segments, return the best lower-third
     crop per contiguous 'chyron on screen' event. Each event carries the crop
@@ -120,7 +164,18 @@ def _find_chyron_frames(video: Path, segments: list[Segment]) -> list[dict]:
                     h = frame.shape[0]
                     band = frame[int(h * BAND_TOP):int(h * BAND_BOTTOM), :]
                     score = _text_score(band)
-                    if score >= MIN_TEXT_SCORE:
+                    strap = _find_strap_box(frame)
+                    if strap is not None:
+                        # a detected strap box outranks text-score candidates
+                        # and is sent as a tight crop: large, legible name,
+                        # nothing else in the image to misread
+                        sx, sy, sw, sh = strap
+                        mx, my = int(sw * 0.25), int(sh * 0.6)
+                        crop = frame[max(0, sy - my):sy + sh + my,
+                                     max(0, sx - mx):sx + sw + mx]
+                        candidates.append({"t": t, "label": label,
+                                           "score": 1.0 + score, "band": crop})
+                    elif score >= MIN_TEXT_SCORE:
                         candidates.append(
                             {"t": t, "label": label, "score": score, "band": band})
         idx += 1
