@@ -213,7 +213,7 @@ dominate hosted cost).
 |---|---|---|
 | 1 | Caption attribution + streaming transcript + cache | **done** (`services/stream_api`): caption-first, SSE protocol, dedup/cache/fresh, review flags; + English translation stage for non-English transcripts |
 | 2 | Diarization fusion + faster-whisper fallback + caption-quality arbitration | mostly done (diarize + chunked ASR + word-boundary splits); remaining: arbitration, DeBERTa pre-filter, vLLM tier |
-| 3 | Vision track: boxes, ASD, name binding | **prototype done**: YuNet+IoU tracks, lip-motion ASD (MediaPipe MAR), chyron name binding, VO-narrator guards, coverage-consistency rule, diarized-turn gating incl. translated-over speakers; remaining: SCRFD/ByteTrack/Light-ASD upgrades, ArcFace gallery, PaddleOCR |
+| 3 | Vision track: boxes, ASD, name binding | **prototype done**: YuNet+IoU tracks, lip-motion ASD (MediaPipe MAR), chyron name binding, VO-narrator guards, coverage-consistency rule, diarized-turn gating incl. translated-over speakers; + SFace face gallery (auto-enrolls evidence-named people; `scripts/seed_gallery.py` seeds public figures from Wikidata/Commons with provenance); remaining: SCRFD/ByteTrack/Light-ASD upgrades, PaddleOCR, alias map for name normalization, legal review of biometric processing |
 | 4 | VLM scene descriptions, "described mode" | **prototype done**: shot detection in the face-pass decode, four-tier describe (talking-head/dup free tiers, Haiku, Opus escalation), interleaved rows + descriptions track; remaining: lazy described-mode trigger as the prod cost knob |
 | 5 | Live-stream mode: permanent trailing edge, online diarization, rolling fusion | new; protocol already supports it (edge < end forever) |
 

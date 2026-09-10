@@ -416,10 +416,11 @@ function drawFaces() {
       v.tr.speaker_label && !voLabels.has(v.tr.speaker_label));
     translated = true;
   }
-  // linked non-active speakers keep a subtle persistent box so the
-  // highlight shifts between conversation partners instead of blinking
+  // linked non-active speakers AND gallery-recognized people (named even
+  // when silent) keep a subtle persistent box — the highlight shifts,
+  // nothing blinks
   const passiveBoxes = visible.filter(v =>
-    v.tr.speaker_label && !voLabels.has(v.tr.speaker_label) &&
+    ((v.tr.speaker_label && !voLabels.has(v.tr.speaker_label)) || v.tr.name) &&
     !speakerBoxes.includes(v));
   if (!speakerBoxes.length && !passiveBoxes.length) return;
   if (visible.length > CROWD_LIMIT) {

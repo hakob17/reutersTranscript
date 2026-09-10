@@ -166,13 +166,20 @@ class IouTracker:
         out = []
         for tr in tracks:
             boxes = tr["boxes"]
-            if boxes[-1]["t"] - boxes[0]["t"] >= MIN_TRACK_S:
-                out.append({"id": tr["id"], "name": None,
-                            "t0": round(boxes[0]["t"], 3),
-                            "t1": round(boxes[-1]["t"], 3),
-                            "boxes": [{k: round(float(v), 4) for k, v in b.items()
-                                       if v is not None}
-                                      for b in boxes]})
+            if boxes[-1]["t"] - boxes[0]["t"] < MIN_TRACK_S:
+                continue
+            embs = [b.pop("emb") for b in boxes if "emb" in b]
+            track = {"id": tr["id"], "name": None,
+                     "t0": round(boxes[0]["t"], 3),
+                     "t1": round(boxes[-1]["t"], 3),
+                     "boxes": [{k: round(float(v), 4) for k, v in b.items()
+                                if v is not None}
+                               for b in boxes]}
+            if embs:   # mean embedding; internal only — stripped before emit
+                n = len(embs)
+                track["emb"] = [round(sum(e[i] for e in embs) / n, 5)
+                                for i in range(len(embs[0]))]
+            out.append(track)
         out.sort(key=lambda tr: tr["t0"])
         return out
 
@@ -207,6 +214,8 @@ def detect_face_tracks(video, sample_fps: float = SAMPLE_FPS,
     detector = cv2.FaceDetectorYN_create(str(_yunet_path()), "", (320, 320),
                                          score_threshold=0.6)
     mp, landmarker = _make_landmarker()
+    from .gallery import embed, make_recognizer
+    recognizer = make_recognizer()
     cap = cv2.VideoCapture(best_rendition_for_faces(video))
     fps = cap.get(cv2.CAP_PROP_FPS) or 30.0
     step = max(1, int(round(fps / sample_fps)))
@@ -272,8 +281,23 @@ def detect_face_tracks(video, sample_fps: float = SAMPLE_FPS,
                     sh, sw = small.shape[:2]
                     for f in faces:
                         x, y, bw, bh = (float(v) for v in f[:4])  # numpy -> JSON-safe
-                        dets.append({"x": max(0.0, x / sw), "y": max(0.0, y / sh),
-                                     "w": bw / sw, "h": bh / sh})
+                        d = {"x": max(0.0, x / sw), "y": max(0.0, y / sh),
+                             "w": bw / sw, "h": bh / sh}
+                        # SFace embedding for gallery identification —
+                        # only prominent faces, bounded shots
+                        if (recognizer is not None and len(faces) <= ASD_MAX_FACES
+                                and d["w"] * d["h"] >= MIN_BIND_AREA):
+                            # skip dark crops (fades, night footage): low-light
+                            # embeddings collapse together and produce
+                            # confident-looking false matches
+                            crop = small[max(0, int(y)):int(y + bh),
+                                         max(0, int(x)):int(x + bw)]
+                            lit = crop.size > 0 and float(cv2.cvtColor(
+                                crop, cv2.COLOR_BGR2GRAY).mean()) >= 50
+                            e = embed(recognizer, small, f) if lit else None
+                            if e is not None:
+                                d["emb"] = e
+                        dets.append(d)
                     # lip landmarks for ASD — only where competition is
                     # possible and cost stays bounded
                     if landmarker is not None and 1 <= len(dets) <= ASD_MAX_FACES:
