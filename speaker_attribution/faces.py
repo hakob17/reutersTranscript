@@ -25,7 +25,38 @@ SAMPLE_FPS = 4            # detection sampling rate
 IOU_MATCH = 0.30          # detection -> track association threshold
 TRACK_GAP_S = 0.75        # close a track after this long unmatched
 MIN_TRACK_S = 1.0         # drop blips shorter than this
-MIN_BIND_AREA = 0.02      # face must be >2% of frame to be a naming candidate
+MIN_BIND_AREA = 0.02      # face must be >2% of frame to take a chyron NAME
+MIN_VIS_AREA = 0.006      # smaller faces (wide shots) still count as visible
+FACE_RENDITION_H = 480    # decode this rendition for detection, not the
+                          # master's first (= lowest) variant
+
+
+def best_rendition_for_faces(url: str) -> str:
+    """cv2.VideoCapture on an HLS master picks the FIRST (lowest) variant —
+    320x180 on Reuters masters, where wide-shot faces are undetectable.
+    Pick the variant closest to FACE_RENDITION_H instead. Non-master inputs
+    (local files, direct renditions) pass through unchanged."""
+    if not str(url).startswith(("http://", "https://")):
+        return url
+    try:
+        import re
+        import urllib.parse
+        from .captions import _http_get
+        playlist = _http_get(str(url))
+        if "#EXT-X-STREAM-INF" not in playlist:
+            return url
+        best, best_d = None, None
+        lines = playlist.splitlines()
+        for i, line in enumerate(lines):
+            if line.startswith("#EXT-X-STREAM-INF"):
+                m = re.search(r"RESOLUTION=\d+x(\d+)", line)
+                if m and i + 1 < len(lines) and lines[i + 1].strip():
+                    d = abs(int(m.group(1)) - FACE_RENDITION_H)
+                    if best_d is None or d < best_d:
+                        best, best_d = lines[i + 1].strip(), d
+        return urllib.parse.urljoin(str(url), best) if best else url
+    except Exception:
+        return url
 
 
 def _yunet_path() -> Path:
@@ -102,7 +133,7 @@ def detect_face_tracks(video, sample_fps: float = SAMPLE_FPS) -> list[dict]:
 
     detector = cv2.FaceDetectorYN_create(str(_yunet_path()), "", (320, 320),
                                          score_threshold=0.6)
-    cap = cv2.VideoCapture(str(video))
+    cap = cv2.VideoCapture(best_rendition_for_faces(video))
     fps = cap.get(cv2.CAP_PROP_FPS) or 30.0
     step = max(1, int(round(fps / sample_fps)))
 
@@ -166,7 +197,7 @@ def bind_tracks_to_turns(tracks: list[dict],
         visible = []
         for tr in tracks:
             on = sum(1 for b in tr["boxes"]
-                     if t0 <= b["t"] <= t1 and b["w"] * b["h"] >= MIN_BIND_AREA)
+                     if t0 <= b["t"] <= t1 and b["w"] * b["h"] >= MIN_VIS_AREA)
             if on * (1.0 / SAMPLE_FPS) >= 0.6 * dur:
                 visible.append(tr)
         if len(visible) == 1:
