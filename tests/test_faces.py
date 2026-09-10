@@ -107,6 +107,44 @@ def test_turn_binding_lip_motion_requires_all_measured():
     assert talking["speaker_label"] is None
 
 
+def test_turn_binding_excluded_label_never_votes():
+    # narrator/voice-over labels are off-camera; solo B-roll face binds nothing
+    tracks = [_track_with_mar(1, 0.0, 10.0, 0.4, [0.1, 0.4, 0.15, 0.45])]
+    bind_tracks_to_turns(tracks, [(1.0, 9.0, "SPEAKER_00")],
+                         exclude_labels={"SPEAKER_00"})
+    assert tracks[0]["speaker_label"] is None
+
+
+def test_turn_binding_solo_still_face_fails_lip_gate():
+    # VO over a solo, silent face: lips still -> no vote (landmarks present)
+    still = _track_with_mar(1, 0.0, 10.0, 0.4, [0.12, 0.12, 0.13, 0.12])
+    bind_tracks_to_turns([still], [(1.0, 9.0, "SPEAKER_00")])
+    assert still["speaker_label"] is None
+
+
+def test_turn_binding_solo_without_landmarks_keeps_legacy():
+    # no MAR anywhere (mediapipe unavailable) -> legacy visibility rule
+    tracks = [_track(1, 0.0, 10.0, 0.4)]
+    bind_tracks_to_turns(tracks, [(1.0, 9.0, "SPEAKER_00")])
+    assert tracks[0]["speaker_label"] == "SPEAKER_00"
+
+
+def test_turn_binding_coverage_strips_sliver_matches():
+    # a 5s "match" against 95s of that voice's speech = bystander, stripped
+    tracks = [_track_with_mar(1, 65.0, 70.0, 0.4, [0.1, 0.4, 0.15, 0.45])]
+    turns = [(0.0, 60.0, "SPEAKER_00"), (64.0, 99.0, "SPEAKER_00")]
+    bind_tracks_to_turns(tracks, turns)
+    assert tracks[0]["speaker_label"] is None
+
+
+def test_turn_binding_coverage_keeps_consistent_speaker():
+    # face on screen for most of the voice's speech -> links survive
+    tracks = [_track_with_mar(1, 0.0, 8.0, 0.4, [0.1, 0.4, 0.15, 0.45])]
+    turns = [(1.0, 7.0, "SPEAKER_00")]
+    bind_tracks_to_turns(tracks, turns)
+    assert tracks[0]["speaker_label"] == "SPEAKER_00"
+
+
 def test_binding_conflict_unbinds():
     tracks = [_track(1, 0.0, 10.0, 0.4)]
     warnings = bind_names_to_tracks(tracks, [
