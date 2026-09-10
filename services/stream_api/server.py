@@ -33,13 +33,16 @@ from __future__ import annotations
 
 import json
 import os
+import subprocess
 import sys
 import tempfile
 import threading
+import time
 from pathlib import Path
 
 from fastapi import FastAPI
 from fastapi.responses import FileResponse, StreamingResponse
+from fastapi.staticfiles import StaticFiles
 
 ROOT = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(ROOT))
@@ -190,7 +193,46 @@ VIDEOS = {
         "url": "https://ajo.prod.reuters.tv/v3/playlist/406248/master.m3u8",
         "title": "الحوثيون يعلقون الرحلات الجوية إلى صنعاء مع اشتداد الحرب الاقتصادية",
     },
+    # Phase 5: simulated live broadcast — ffmpeg re-streams a package at 1x
+    # into a growing event playlist; the pipeline follows the edge.
+    "live_demo": {
+        "url": "/live/live.m3u8",
+        "title": "🔴 LIVE simulation — Berlin protest package (rolling pipeline)",
+        "live": True,
+    },
 }
+
+LIVE_DIR = STATIC_DIR / "live"
+LIVE_SOURCE = ("https://ajo.prod.reuters.tv/v3/playlist/854x480/404233/"
+               "rendition.m3u8")
+_live_proc: subprocess.Popen | None = None
+_live_lock = threading.Lock()
+
+
+def ensure_live_sim() -> None:
+    """Start (or restart after it ends) the simulated live encoder."""
+    global _live_proc
+    with _live_lock:
+        if _live_proc is not None and _live_proc.poll() is None:
+            return
+        import shutil
+        shutil.rmtree(LIVE_DIR, ignore_errors=True)
+        LIVE_DIR.mkdir(parents=True)
+        _live_proc = subprocess.Popen(
+            ["ffmpeg", "-v", "error", "-re", "-i", LIVE_SOURCE, "-c", "copy",
+             "-f", "hls", "-hls_time", "4", "-hls_playlist_type", "event",
+             str(LIVE_DIR / "live.m3u8")],
+            stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+
+
+def _decode_segment(path: Path):
+    """One HLS .ts segment -> float32 mono 16k numpy audio."""
+    import numpy as np
+    out = subprocess.run(
+        ["ffmpeg", "-v", "error", "-i", str(path), "-f", "f32le", "-ac", "1",
+         "-ar", "16000", "-"],
+        capture_output=True, check=True)
+    return np.frombuffer(out.stdout, dtype=np.float32)
 
 _asr_model = None
 _asr_lock = threading.Lock()
@@ -263,10 +305,12 @@ class Job:
     subscribers replay the log from 0 and then follow live — which makes
     late joiners, concurrent viewers, and cache replay the same code path."""
 
-    def __init__(self, video_id: str, url: str, title: str = ""):
+    def __init__(self, video_id: str, url: str, title: str = "",
+                 live: bool = False):
         self.video_id = video_id
         self.url = url
         self.title = title
+        self.live = live
         self.events: list[dict] = []
         self.done = False
         self.cond = threading.Condition()
@@ -282,9 +326,127 @@ class Job:
 
     def run(self) -> None:
         try:
-            self._run()
+            self._run_live() if self.live else self._run()
         except Exception as exc:  # surface, don't kill the server
             self.emit({"type": "status", "stage": "error", "detail": str(exc)})
+
+    def _finish(self) -> None:
+        from speaker_attribution import costs
+        self.emit({"type": "costs", **costs.summary()})
+        self.emit({"type": "done"})
+        CACHE_DIR.mkdir(exist_ok=True)
+        (CACHE_DIR / f"{self.video_id}.events.json").write_text(
+            json.dumps(self.events, ensure_ascii=False, default=float),
+            encoding="utf-8")
+
+    def _run_live(self) -> None:
+        """Phase 5: follow a live playlist's edge — incremental ASR on new
+        segments, periodic rediarization of the grown prefix with STABLE
+        labels (remap_labels), periodic attribution refreshes. Vision and
+        scene stages are skipped in live mode (post-live VOD reprocessing
+        can add them)."""
+        import numpy as np
+        from speaker_attribution import costs
+        from speaker_attribution.captions import assign_cue_speakers
+        from speaker_attribution.live import remap_labels
+        from speaker_attribution.transcribe import diarize_only
+
+        costs.reset()
+        emit = self.emit
+        ensure_live_sim()
+        emit({"type": "status", "stage": "audio",
+              "detail": "live simulation running — following the stream edge"})
+        playlist = LIVE_DIR / "live.m3u8"
+        for _ in range(30):
+            if playlist.exists():
+                break
+            time.sleep(1)
+
+        device = _device()
+        model = _asr(device)          # warm ASR before segments pile up
+        audio = np.zeros(0, dtype=np.float32)
+        consumed = 0
+        transcribed_s = 0.0
+        cues: list[dict] = []
+        stable: list = []
+        language = None
+        diarized_len = 0
+        attr_lines = 0
+
+        while True:
+            text = playlist.read_text(encoding="utf-8", errors="replace")
+            seg_names = [l.strip() for l in text.splitlines()
+                         if l.strip() and not l.startswith("#")]
+            ended = "#EXT-X-ENDLIST" in text
+            for name in seg_names[consumed:]:
+                try:
+                    audio = np.concatenate(
+                        [audio, _decode_segment(LIVE_DIR / name)])
+                except Exception:
+                    pass
+            consumed = len(seg_names)
+            avail_s = len(audio) / 16000
+
+            if avail_s - transcribed_s >= 8 or (ended and avail_s > transcribed_s):
+                piece = audio[int(transcribed_s * 16000):]
+                res = model.transcribe(piece, batch_size=16,
+                                       language=language, chunk_size=8)
+                if language is None:
+                    language = res.get("language")
+                base = len(cues)
+                newc = [{"start": transcribed_s + float(s["start"]),
+                         "end": transcribed_s + float(s["end"]),
+                         "text": s["text"].strip(), "language": language}
+                        for s in res["segments"] if s["text"].strip()]
+                cues.extend(newc)
+                if newc:
+                    emit({"type": "lines", "lines": [
+                        {"i": base + j, "start": c["start"], "end": c["end"],
+                         "text": c["text"]}
+                        for j, c in enumerate(newc)]})
+                transcribed_s = avail_s
+                emit({"type": "status", "stage": "transcribing",
+                      "detail": f"live edge {avail_s:.0f}s · "
+                                f"{len(cues)} lines ({language})"})
+
+            if (len(audio) - diarized_len >= 24 * 16000
+                    or (ended and len(audio) > diarized_len)):
+                with tempfile.TemporaryDirectory() as td:
+                    wav = Path(td) / "live.wav"
+                    import wave
+                    with wave.open(str(wav), "wb") as w:
+                        w.setnchannels(1); w.setsampwidth(2); w.setframerate(16000)
+                        w.writeframes((audio * 32767).astype("int16").tobytes())
+                    turns_new = diarize_only(
+                        wav, hf_token=os.environ["HF_TOKEN"], device=device)
+                stable = remap_labels(stable, turns_new)
+                diarized_len = len(audio)
+                segments = assign_cue_speakers(cues, stable)
+                emit({"type": "speakers_assigned", "assignments": [
+                    {"i": i, "label": s.speaker}
+                    for i, s in enumerate(segments)],
+                    "turns": [[round(t0, 2), round(t1, 2), l]
+                              for t0, t1, l in stable]})
+                emit({"type": "status", "stage": "diarizing",
+                      "detail": f"rolling rediarization — "
+                                f"{len({l for _, _, l in stable})} stable "
+                                "speakers"})
+                if len(cues) >= 8 and (len(cues) - attr_lines >= 15 or ended):
+                    emit({"type": "status", "stage": "attributing",
+                          "detail": "refreshing names on the live transcript"})
+                    result = attribute_speakers(
+                        video_id=self.video_id, segments=segments,
+                        shotlist="", byline="")
+                    emit(self._names_event(result, phase="live"))
+                    attr_lines = len(cues)
+
+            if ended and transcribed_s >= avail_s and diarized_len == len(audio):
+                break
+            time.sleep(3)
+
+        emit({"type": "status", "stage": "faces",
+              "detail": "stream ended — vision stages run on VOD reprocess"})
+        self._finish()
 
     def _run(self) -> None:
         from speaker_attribution import costs
@@ -439,13 +601,7 @@ class Job:
                 emit({"type": "status", "stage": "scenes",
                       "detail": f"scene pass failed: {exc}"})
 
-        emit({"type": "costs", **costs.summary()})
-        emit({"type": "done"})
-
-        CACHE_DIR.mkdir(exist_ok=True)
-        (CACHE_DIR / f"{self.video_id}.events.json").write_text(
-            json.dumps(self.events, ensure_ascii=False, default=float),
-            encoding="utf-8")
+        self._finish()
 
     def _translate_lines(self, cues: list[dict]) -> None:
         """For non-English transcripts, emit English translations per line
@@ -592,8 +748,9 @@ class Registry:
             if fresh:
                 cached.unlink(missing_ok=True)
 
-            job = Job(video_id, url,
-                      VIDEOS.get(video_id, {}).get("title", ""))
+            entry = VIDEOS.get(video_id, {})
+            job = Job(video_id, url, entry.get("title", ""),
+                      live=bool(entry.get("live")))
             self.jobs[video_id] = job
             if not fresh and cached.exists():    # cache: replay, no processing
                 job.events = json.loads(cached.read_text(encoding="utf-8"))
@@ -609,6 +766,8 @@ class Registry:
 
 registry = Registry()
 app = FastAPI(title="streaming transcript demo")
+LIVE_DIR.mkdir(parents=True, exist_ok=True)
+app.mount("/live", StaticFiles(directory=str(LIVE_DIR)), name="live")
 
 
 @app.get("/")

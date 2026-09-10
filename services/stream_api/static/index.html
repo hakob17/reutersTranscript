@@ -186,8 +186,19 @@ fetch('/api/videos').then(r => r.json()).then(catalogue => {
   document.getElementById('videoLinks').innerHTML =
     ` <a href="?v=${VIDEO_ID}&fresh=1" title="skip the cache and run the pipeline live">⟳ reprocess live</a>` +
     (FRESH ? ' <b style="color:var(--accent)">(live run — cache skipped)</b>' : '');
-  if (video.canPlayType('application/vnd.apple.mpegurl')) video.src = entry.url;
-  else { const h = new Hls(); h.loadSource(entry.url); h.attachMedia(video); }
+  const startPlayback = url => {
+    if (video.canPlayType('application/vnd.apple.mpegurl')) video.src = url;
+    else { const h = new Hls(); h.loadSource(url); h.attachMedia(video); }
+  };
+  if (entry.live) {
+    // the simulated live playlist appears a few seconds after the job starts
+    const attach = () => fetch(entry.url, {method: 'HEAD'})
+      .then(r => r.ok ? startPlayback(entry.url) : setTimeout(attach, 2000))
+      .catch(() => setTimeout(attach, 2000));
+    attach();
+  } else {
+    startPlayback(entry.url);
+  }
 });
 
 /* ---- pipeline status rail (transcribing only appears on the ASR path) ---- */
