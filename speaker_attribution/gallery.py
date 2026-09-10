@@ -1,11 +1,12 @@
-"""Self-building face gallery: identify people on screen, not just speakers.
+"""Face gallery: identify people on screen, not just speakers.
 
 Embeddings come from OpenCV's SFace recognizer (OpenCV Zoo model, no new
-dependencies). The gallery enrolls ONLY evidence-named identities — faces a
-chyron named, or faces linked to a high-confidence attributed speaker — so
-every recognition carries a provenance chain back to broadcast evidence.
-Policy (docs/DESIGN.md §9): that restriction is deliberate; unnamed private
-individuals are never enrolled.
+dependencies). The persistent gallery (gallery.json) holds only public
+figures — Wikidata-verified or manual headshots (scripts/seed_gallery.py).
+People named on air in a video (chyron, or a high-confidence attributed
+speaker) are enrolled for that video's matching only and never persisted:
+no cross-video biometric store of private individuals (docs/DESIGN.md §9).
+Unnamed tracks are never enrolled anywhere.
 
 Matching is conservative: cosine similarity must clear an absolute threshold
 AND beat the best other identity by a margin, else the face stays unnamed.
