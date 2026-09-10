@@ -364,7 +364,11 @@ function boxAt(tr, t) {
   return best;
 }
 
+let diarTurns = [];   // [[t0, t1, label]] — includes speakers with no lines
+let voLabels = new Set();  // narrator/voice-over labels (from mapping roles)
 function speakerLabelAt(t) {
+  const turn = diarTurns.find(([t0, t1]) => t >= t0 && t <= t1);
+  if (turn) return turn[2];
   const l = lines.find(l => l && t >= l.start && t < l.end);
   return l ? l.label : null;
 }
@@ -393,7 +397,15 @@ function drawFaces() {
   if (!label) return;
   const visible = faceTracks.map(tr => ({tr, box: boxAt(tr, t)}))
                             .filter(v => v.box);
-  const speakerBoxes = visible.filter(v => v.tr.speaker_label === label);
+  let speakerBoxes = visible.filter(v => v.tr.speaker_label === label);
+  let translated = false;
+  if (!speakerBoxes.length && voLabels.has(label)) {
+    // a narrator's translation VO is playing: the on-screen person whose
+    // (covered) remarks are being translated is editorially the speaker
+    speakerBoxes = visible.filter(v =>
+      v.tr.speaker_label && !voLabels.has(v.tr.speaker_label));
+    translated = true;
+  }
   if (!speakerBoxes.length) return;
   if (visible.length > CROWD_LIMIT && !speakerBoxes.length) return;
 
@@ -405,7 +417,8 @@ function drawFaces() {
     ctx.strokeStyle = '#fa6400';
     ctx.lineWidth = 2;
     ctx.strokeRect(x, y, w, h);
-    const text = speakerDisplayName(tr, label);
+    let text = speakerDisplayName(tr, tr.speaker_label);
+    if (translated && text === 'Speaking') text = 'Speaker (translated)';
     const tw = ctx.measureText(text).width + 10;
     ctx.fillStyle = '#fa6400';
     ctx.fillRect(x, Math.max(0, y - 20), tw, 20);
@@ -476,10 +489,14 @@ es.onmessage = msg => {
     updateMeter(); refreshTrack();
   } else if (ev.type === 'speakers_assigned') {
     for (const a of ev.assignments) if (lines[a.i]) { lines[a.i].label = a.label; renderLine(lines[a.i]); }
+    diarTurns = ev.turns || [];
     refreshTrack();
     announce('Speaker turns assigned to transcript lines.');
   } else if (ev.type === 'names') {
     mapping = ev.mapping;
+    voLabels = new Set(Object.entries(mapping)
+      .filter(([, m]) => /narrat|voice.?over/i.test(m.role || ''))
+      .map(([l]) => l));
     lines.forEach(renderLine);
     updateMeter(true); refreshTrack();
     const named = Object.values(ev.mapping).filter(m => m.name !== 'Unidentified').map(m => m.name);

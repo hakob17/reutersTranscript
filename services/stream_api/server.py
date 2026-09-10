@@ -343,9 +343,12 @@ class Job:
                 ]})
 
         segments = assign_cue_speakers(cues, turns)
+        # turns included: speakers with no caption lines (foreign-language
+        # remarks under a translation voice-over) still exist on the timeline
         emit({"type": "speakers_assigned", "assignments": [
             {"i": i, "label": s.speaker} for i, s in enumerate(segments)
-        ]})
+        ], "turns": [[round(t0, 2), round(t1, 2), label]
+                     for t0, t1, label in turns]})
 
         emit({"type": "status", "stage": "attributing",
               "detail": "resolving names via Claude"})
