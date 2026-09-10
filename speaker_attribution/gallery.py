@@ -23,6 +23,10 @@ GALLERY_PATH = Path(__file__).resolve().parent.parent / "gallery.json"
 
 MATCH_THRESHOLD = 0.40    # SFace cosine; the model's standard bar is ~0.363
 MATCH_MARGIN = 0.05       # must beat the runner-up identity by this
+HIGH_CONFIDENCE = 0.60    # below this a face match alone is medium evidence:
+                          # shown as "Possibly <name>", never asserted. The
+                          # margin rule can't protect against UNENROLLED
+                          # lookalikes (open-set), so medium matches hedge.
 MAX_EMBS_PER_NAME = 10    # keep the freshest N embeddings per identity
 
 
@@ -76,6 +80,12 @@ def enroll(gallery: dict, name: str, emb: list[float], source: str) -> None:
     entry["sources"].append(source)
     entry["embs"] = entry["embs"][-MAX_EMBS_PER_NAME:]
     entry["sources"] = entry["sources"][-MAX_EMBS_PER_NAME:]
+
+
+def is_confident(score: float) -> bool:
+    """A face match alone binds a name only at high similarity; below that
+    it is one medium-confidence modality (DESIGN.md §4.2) — tentative."""
+    return score >= HIGH_CONFIDENCE
 
 
 def match(gallery: dict, emb: list[float]) -> tuple[str, float] | None:

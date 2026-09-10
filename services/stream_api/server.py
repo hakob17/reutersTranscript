@@ -565,7 +565,7 @@ class Job:
             enrolled = recognized = 0
             try:
                 from speaker_attribution.gallery import (
-                    enroll, load_gallery, match, save_gallery)
+                    enroll, is_confident, load_gallery, match, save_gallery)
                 gallery = load_gallery()
                 for tr in tracks:
                     if "emb" not in tr:
@@ -590,6 +590,7 @@ class Job:
                     if hit:
                         tr["name"], score = hit
                         tr["gallery"] = score
+                        tr["name_tentative"] = not is_confident(score)
                         recognized += 1
                 save_gallery(gallery)
             except Exception:
