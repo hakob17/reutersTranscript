@@ -21,7 +21,11 @@ YUNET_URL = ("https://github.com/opencv/opencv_zoo/raw/main/models/"
              "face_detection_yunet/face_detection_yunet_2023mar.onnx")
 MODEL_DIR = Path(__file__).resolve().parent.parent / ".models"
 
-SAMPLE_FPS = 4            # detection sampling rate
+FACE_LANDMARKER_URL = ("https://storage.googleapis.com/mediapipe-models/"
+                       "face_landmarker/face_landmarker/float16/1/"
+                       "face_landmarker.task")
+
+SAMPLE_FPS = 6            # detection sampling rate (lip motion needs >=6)
 IOU_MATCH = 0.30          # detection -> track association threshold
 TRACK_GAP_S = 0.75        # close a track after this long unmatched
 MIN_TRACK_S = 1.0         # drop blips shorter than this
@@ -29,6 +33,12 @@ MIN_BIND_AREA = 0.02      # face must be >2% of frame to take a chyron NAME
 MIN_VIS_AREA = 0.006      # smaller faces (wide shots) still count as visible
 FACE_RENDITION_H = 480    # decode this rendition for detection, not the
                           # master's first (= lowest) variant
+
+# lip-motion ASD (mouth-aspect-ratio variance while a speaker turn is live)
+LIP_MIN_SAMPLES = 5       # need this many MAR samples in a turn to score
+LIP_MARGIN = 1.6          # winner's lip energy must beat runner-up by this
+LIP_FLOOR = 0.02          # and exceed this absolute energy (still faces ~0.005)
+ASD_MAX_FACES = 4         # score lip motion only in 2..N-face shots
 
 
 def best_rendition_for_faces(url: str) -> str:
@@ -65,6 +75,43 @@ def _yunet_path() -> Path:
     if not path.exists():
         urllib.request.urlretrieve(YUNET_URL, path)
     return path
+
+
+def _make_landmarker():
+    """MediaPipe FaceLandmarker for lip landmarks; None if unavailable."""
+    try:
+        import mediapipe as mp
+        from mediapipe.tasks.python import vision
+        from mediapipe.tasks.python.core.base_options import BaseOptions
+        MODEL_DIR.mkdir(exist_ok=True)
+        path = MODEL_DIR / "face_landmarker.task"
+        if not path.exists():
+            urllib.request.urlretrieve(FACE_LANDMARKER_URL, path)
+        opts = vision.FaceLandmarkerOptions(
+            base_options=BaseOptions(model_asset_path=str(path)),
+            num_faces=1, running_mode=vision.RunningMode.IMAGE)
+        return mp, vision.FaceLandmarker.create_from_options(opts)
+    except Exception:
+        return None, None
+
+
+def _mouth_aspect_ratio(mp, landmarker, face_bgr) -> float | None:
+    """MAR = inner-lip opening / mouth width, from FaceMesh landmarks.
+    Talking faces oscillate; listeners stay near-constant."""
+    import cv2
+    try:
+        rgb = cv2.cvtColor(face_bgr, cv2.COLOR_BGR2RGB)
+        res = landmarker.detect(mp.Image(image_format=mp.ImageFormat.SRGB,
+                                         data=rgb))
+        if not res.face_landmarks:
+            return None
+        lm = res.face_landmarks[0]
+        up, lo, left, right = lm[13], lm[14], lm[61], lm[291]
+        width = ((left.x - right.x) ** 2 + (left.y - right.y) ** 2) ** 0.5
+        opening = ((up.x - lo.x) ** 2 + (up.y - lo.y) ** 2) ** 0.5
+        return opening / width if width > 1e-6 else None
+    except Exception:
+        return None
 
 
 # --------------------------------------------------------------------------
@@ -120,7 +167,8 @@ class IouTracker:
                 out.append({"id": tr["id"], "name": None,
                             "t0": round(boxes[0]["t"], 3),
                             "t1": round(boxes[-1]["t"], 3),
-                            "boxes": [{k: round(float(v), 4) for k, v in b.items()}
+                            "boxes": [{k: round(float(v), 4) for k, v in b.items()
+                                       if v is not None}
                                       for b in boxes]})
         out.sort(key=lambda tr: tr["t0"])
         return out
@@ -133,6 +181,7 @@ def detect_face_tracks(video, sample_fps: float = SAMPLE_FPS) -> list[dict]:
 
     detector = cv2.FaceDetectorYN_create(str(_yunet_path()), "", (320, 320),
                                          score_threshold=0.6)
+    mp, landmarker = _make_landmarker()
     cap = cv2.VideoCapture(best_rendition_for_faces(video))
     fps = cap.get(cv2.CAP_PROP_FPS) or 30.0
     step = max(1, int(round(fps / sample_fps)))
@@ -161,6 +210,20 @@ def detect_face_tracks(video, sample_fps: float = SAMPLE_FPS) -> list[dict]:
                         x, y, bw, bh = (float(v) for v in f[:4])  # numpy -> JSON-safe
                         dets.append({"x": max(0.0, x / sw), "y": max(0.0, y / sh),
                                      "w": bw / sw, "h": bh / sh})
+                    # lip landmarks for ASD — only where competition is
+                    # possible and cost stays bounded
+                    if landmarker is not None and 1 <= len(dets) <= ASD_MAX_FACES:
+                        for d in dets:
+                            mx = d["w"] * 0.25
+                            x0 = int(max(0.0, d["x"] - mx) * sw)
+                            x1 = int(min(1.0, d["x"] + d["w"] + mx) * sw)
+                            y0 = int(max(0.0, d["y"] - mx) * sh)
+                            y1 = int(min(1.0, d["y"] + d["h"] + mx) * sh)
+                            if x1 - x0 > 24 and y1 - y0 > 24:
+                                mar = _mouth_aspect_ratio(
+                                    mp, landmarker, small[y0:y1, x0:x1])
+                                if mar is not None:
+                                    d["mar"] = mar
                 tracker.update(idx / fps, dets)
         idx += 1
     cap.release()
@@ -179,15 +242,27 @@ def _track_box_at(track: dict, t: float, slack: float = 0.6) -> dict | None:
     return best
 
 
+def _lip_energy(track: dict, t0: float, t1: float) -> float | None:
+    """Mean |ΔMAR| between consecutive samples inside [t0, t1] — high while
+    talking, near zero for a listening face. None if too few samples."""
+    mars = [(b["t"], b["mar"]) for b in track["boxes"]
+            if t0 <= b["t"] <= t1 and "mar" in b]
+    if len(mars) < LIP_MIN_SAMPLES:
+        return None
+    diffs = [abs(mars[i + 1][1] - mars[i][1]) for i in range(len(mars) - 1)]
+    return sum(diffs) / len(diffs)
+
+
 def bind_tracks_to_turns(tracks: list[dict],
                          turns: list[tuple[float, float, str]]) -> None:
-    """ASD-lite: link face tracks to diarization labels by solo visibility.
+    """ASD: link face tracks to diarization labels.
 
-    A speaker turn votes for a track only when that track is the SINGLE
-    prominent face on screen for most of the turn (news editing favors solo
-    close-ups of the person talking). A track takes a label only with a
-    clear vote margin — ambiguity binds nothing. Sets track["speaker_label"].
-    Production replacement: Light-ASD (docs/DESIGN.md §3).
+    Solo shots vote by visibility (the single prominent face during a turn
+    is the speaker). Multi-face shots (2..ASD_MAX_FACES) vote by lip motion:
+    the face whose mouth-aspect-ratio oscillates while the turn is live wins,
+    but only with a clear margin over the runner-up — ambiguity binds
+    nothing. A track takes a label only with a 2x vote margin. Sets
+    track["speaker_label"]. (Trained Light-ASD remains the upgrade path.)
     """
     votes: dict[int, dict[str, int]] = {}
     for t0, t1, label in turns:
@@ -200,8 +275,21 @@ def bind_tracks_to_turns(tracks: list[dict],
                      if t0 <= b["t"] <= t1 and b["w"] * b["h"] >= MIN_VIS_AREA)
             if on * (1.0 / SAMPLE_FPS) >= 0.6 * dur:
                 visible.append(tr)
+
+        winner = None
         if len(visible) == 1:
-            tid = visible[0]["id"]
+            winner = visible[0]
+        elif 2 <= len(visible) <= ASD_MAX_FACES:
+            scored = [(tr, _lip_energy(tr, t0, t1)) for tr in visible]
+            scored = [(tr, e) for tr, e in scored if e is not None]
+            if len(scored) == len(visible):        # every face measurable
+                scored.sort(key=lambda te: te[1], reverse=True)
+                top_tr, top = scored[0]
+                second = scored[1][1]
+                if top >= LIP_FLOOR and top >= LIP_MARGIN * max(second, 1e-6):
+                    winner = top_tr
+        if winner is not None:
+            tid = winner["id"]
             votes.setdefault(tid, {})
             votes[tid][label] = votes[tid].get(label, 0) + 1
 
