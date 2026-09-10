@@ -138,19 +138,25 @@ AWS us-east-1 on-demand list prices at the time of writing; verify before commit
 
 ### 4.2 LLM cost per video (measured)
 
-From the pipeline's own `costs` event (`speaker_attribution/costs.py`):
+From the pipeline's own `costs` event (`speaker_attribution/costs.py`), across
+the full 30-video catalogue re-run on the current code (28 Arabic clips + 2
+English packages; average length **2.3 min**):
 
-| Stage | Model | Measured per video |
-|---|---|---|
-| Speaker attribution | Sonnet 4.6 | $0.007–0.008 |
-| Chyron reading | Opus 5 | ~$0.004 (more on crop-heavy videos, up to ~$0.03 at 16 crops) |
-| Translation (non-English only) | Sonnet 4.6 | $0.010–0.011 |
-| Scene descriptions | Haiku 4.5 (+ Opus on flagged shots) | $0.008–0.013 |
-| **Total** | | **$0.02–0.035 typical** (measured $0.030 and $0.035 on two Arabic videos; English videos skip translation) |
+| Stage | Model | Mean per video | Max | Share |
+|---|---|---|---|---|
+| Translation (28 non-English videos) | Sonnet 4.6 | $0.0165 | $0.023 | 36% |
+| Speaker attribution | Sonnet 4.6 | $0.0105 | $0.024 | 24% |
+| Scene descriptions | Haiku 4.5 (+ Opus on flagged shots) | $0.0098 | $0.040 | 23% |
+| Chyron reading | Opus 5 | $0.0071 | $0.068 | 17% |
+| **Total** | | **$0.043** (median $0.040, range $0.025–0.133) | $0.133 | |
 
-Planning figure: **$0.03 per video, $0.05 worst case.**
+The whole catalogue cost **$1.29**. Cost follows length and speaker count:
+**~$0.019 per video-minute**. The 6.3-minute, eight-speaker English package
+cost $0.133; the ~2-minute Arabic clips $0.03–0.05.
 
-### 4.3 Compute cost per video
+Planning figures: **~$0.04 per short clip (~2 min); ~$0.12 per 6-minute package.**
+
+### 4.3 Compute cost per video (6–7 minute video)
 
 | Design | Caption path | ASR path |
 |---|---|---|
@@ -158,6 +164,9 @@ Planning figure: **$0.03 per video, $0.05 worst case.**
 | Current single process on `g6.xlarge`, Spot | $0.04–0.05 | $0.05–0.07 |
 | Split: GPU task only for audio+ASR+diarization; faces/chyron on CPU Spot in parallel; Claude calls from Lambda — on-demand | $0.04–0.05 | $0.07–0.08 |
 | Same split, Spot | $0.013–0.018 | $0.02–0.03 |
+
+Compute scales roughly with length plus about a minute of fixed per-job
+overhead, so a ~2-minute clip costs roughly 35–45% of these figures.
 
 ### 4.4 AWS platform overhead (monthly)
 
@@ -178,40 +187,60 @@ Planning figure: **$0.03 per video, $0.05 worst case.**
 
 ### 4.5 Deployment options and monthly totals
 
-Planning inputs: 6-minute average video, LLM $0.03/video.
+Cost follows length, so two content profiles: **short clips** (the measured
+catalogue: ~2.3 min, LLM $0.043) and **6-minute packages** (LLM ~$0.12).
+Fixed platform ~$50/month is included.
 
-- **A — single always-on `g6.xlarge` running the streaming server** (what the demo is today). ~$588/month on-demand; roughly 30–40% less with a 1-year Savings Plan; ~$294 if it only runs 12 h/day. Capacity: ~5–7 new videos per hour with the current sequential stages (~120–170/day). Cached views are free.
-- **B — Batch + Spot, scale to zero** (`infra/`), current code: ~$0.08 per video all-in + fixed platform. Cold start 3–8 min (instance boot + image pull) unless a warm pool is kept.
-- **C — split design on Spot** (GPU only where it's needed): ~$0.05 per video all-in + fixed platform.
+- **A — always-on `g6.xlarge` box(es) running the streaming server** (what the demo is today). $588/month each on-demand; roughly 30–40% less on a 1-year Savings Plan; ~$294 at 12 h/day. Capacity with the current sequential stages: ~300 short clips or ~150 six-minute packages a day per box. Cached views are free.
+- **B — Batch + Spot, scale to zero** (`infra/`), current code: all-in ~$0.07 per short clip, ~$0.165 per package. Cold start 3–8 min (instance boot + image pull) unless a warm pool is kept.
+- **C — split design on Spot** (GPU only for audio, ASR and diarization): all-in ~$0.053 per short clip, ~$0.135 per package.
 - **Warm box add-on** for instant first views in B or C: one `g6.xlarge` during editorial hours, ~$294/month.
 
-| Volume | A: always-on box(es), on-demand | B: Batch Spot, current code | C: split design, Spot |
+Short clips (~2.3 min):
+
+| Volume | A: always-on | B: Batch Spot | C: split, Spot |
 |---|---|---|---|
-| 30/day (~900/month) | ~$640 (1 box) | ~$120 | ~$95 |
-| 200/day (~6,000/month) | ~$1,400 (2 boxes) | ~$530 | ~$350 |
-| 1,000/day (~30,000/month) | ~$5,100 (7 boxes) | ~$2,450 | ~$1,550 |
+| 30/day (~900/month) | ~$650 (1 box) | ~$115 | ~$100 |
+| 200/day (~6,000/month) | ~$880 (1 box) | ~$470 | ~$370 |
+| 1,000/day (~30,000/month) | ~$3,700 (4 boxes) | ~$2,150 | ~$1,640 |
 
-Add ~$294/month to B or C for a warm editorial-hours box. Per-video cost in A depends on utilization: ~$0.70 at 30/day, ~$0.20 at 150/day.
+6-minute packages:
 
-**Back-catalogue backfill:** Claude Batch API (50% off) + split design on Spot ≈ **$0.03 per video** → ~$3,000 per 100,000 archive videos.
+| Volume | A: always-on | B: Batch Spot | C: split, Spot |
+|---|---|---|---|
+| 30/day (~900/month) | ~$720 (1 box) | ~$200 | ~$170 |
+| 200/day (~6,000/month) | ~$1,950 (2 boxes) | ~$1,040 | ~$860 |
+| 1,000/day (~30,000/month) | ~$7,800 (7 boxes) | ~$5,000 | ~$4,100 |
+
+**Back-catalogue backfill:** Claude Batch API (50% off) + split design on Spot ≈ **$0.03 per short clip, ~$0.08 per package** → ~$3,000 per 100,000 short archive clips.
 
 ### 4.6 Where the money goes, and the levers
 
-At low volume an always-on GPU box is >90% of the bill; the LLM is a small slice (~$0.03/video). Levers, largest first:
+Two regimes. With an always-on box at low volume, the idle GPU is most of the
+bill. On Spot / scale-to-zero, **Claude is the largest per-video cost**
+(roughly 60–90% of it), so the LLM levers lead there.
 
-1. **Utilization.** Scale to zero (B/C) or schedule the box to editorial hours. An idle GPU is the dominant cost at pilot volume.
-2. **Get vision off the GPU box's critical path.** Either move faces/chyron to CPU Spot tasks, or run YuNet/SFace on the GPU (ONNX Runtime CUDA) with hardware video decode. Either cuts GPU-box time by ~60–70%.
-3. **One decode pass.** Chyron and faces each decode the stream today; merging them saves a full decode per video.
-4. **GPU only where needed.** Captioned videos need the GPU only for diarization (CPU-only measured at 206 s). A small GPU pool for the uncaptioned/ASR fallback, CPU Spot for everything else, or `g4dn.xlarge` (T4, $0.526/hr) for captioned-only work.
-5. **Lazy described mode.** Generate scene descriptions only when a viewer turns them on: ~30–40% of LLM spend.
-6. **Claude Batch API** for anything non-interactive: 50% off LLM.
-7. **Spot + Savings Plans** for the steady baseline.
-8. **Right-size the instance.** The current code is CPU-heavy, so `g6.2xlarge` (8 vCPU, $0.978/hr) may be cheaper per video than `g6.xlarge`. Benchmark both.
-9. **The cache is the multiplier.** Each video is processed once; every later view costs only SSE bytes.
+Infrastructure:
+
+1. **Utilization.** Scale to zero (B/C) or schedule the box to editorial hours. An idle GPU dominates at pilot volume.
+2. **Get vision off the GPU box's critical path.** Move faces/chyron to CPU Spot tasks, or run YuNet/SFace on the GPU (ONNX Runtime CUDA) with hardware video decode. Either cuts GPU-box time by ~60–70%.
+3. **One decode pass.** Chyron and faces each decode the stream today.
+4. **GPU only where needed.** Captioned videos need the GPU only for diarization (CPU-only measured at 206 s): a small GPU pool for the ASR fallback, CPU Spot or `g4dn.xlarge` (T4, $0.526/hr) for the rest.
+5. **Spot, Savings Plans, right-sizing.** The current code is CPU-heavy, so `g6.2xlarge` (8 vCPU, $0.978/hr) may beat `g6.xlarge` per video. Benchmark both.
+
+LLM (shares from §4.2):
+
+6. **Translation on Haiku 4.5** instead of Sonnet: translation is the largest stage (36%); ~3× cheaper saves ~25% of LLM spend. Needs a quality check on names and titles.
+7. **Lazy described mode.** Scene descriptions only when a viewer turns them on: up to 23% of LLM spend.
+8. **Chyron reading Haiku-first**, Opus only for crops Haiku can't read (the pattern scenes already use): most of the 17% chyron share.
+9. **Claude Batch API** for anything non-interactive: 50% off.
+
+The multiplier underneath all of it is **the cache**: each video is processed
+once, and every later view costs only event bytes.
 
 ## 5. Assumptions and how to firm up the numbers
 
 - AWS prices: us-east-1 on-demand list prices; Spot assumed ~65% off. Verify current pricing.
-- AWS timings (§3.2, §4.3) are **extrapolated** from local RTX 4090 laptop runs. LLM costs (§4.2) are **measured**.
+- AWS timings (§3.2, §4.3) are **extrapolated** from local RTX 4090 laptop runs. LLM costs (§4.2) are **measured** across the full 30-video catalogue.
 - Model weights (Whisper large-v3, pyannote, YuNet, SFace, FaceLandmarker) must be baked into the image/AMI; otherwise every cold start downloads several GB.
 - **Benchmark plan (half a day):** launch `g6.xlarge` and `g6.2xlarge`, run `scripts/prewarm.sh` over the 30-video catalogue, add timestamps to `status` events for per-stage durations, and collect the `costs` events. That replaces every estimate above with a measurement.
