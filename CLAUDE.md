@@ -82,6 +82,10 @@ frames to the vision model — detection gates what reaches the API.
   never embedded — low-light embeddings collapse into false matches.
 - Face voting excludes ANY narrator/voice-over label (named or not): lip
   motion can't tell "speaking now" from "speaking in archive footage".
+- Chyron detection has two paths: `_text_score` on the lower band, and
+  `_find_strap_box` (bright box with dark text). Keep both — the text score
+  collapses on busy backgrounds (0.0 on a clear strap over foliage). Strap
+  hits outrank band hits and are sent to Claude as tight crops.
 - WhisperX ≥3.4: `DiarizationPipeline(token=...)` (not `use_auth_token=`);
   default diarization model is gated `pyannote/speaker-diarization-community-1`
   — the HF account must accept its terms (3.1 alone is NOT enough: pyannote 4.x
