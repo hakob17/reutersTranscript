@@ -36,7 +36,16 @@
   .layout { display:grid; grid-template-columns:minmax(0,7fr) minmax(300px,5fr); gap:26px; }
   @media (max-width:900px){ .layout { grid-template-columns:1fr; } }
 
+  .player-frame { position:relative; }
   video { width:100%; display:block; background:#000; border-radius:4px; }
+  #faceCanvas { position:absolute; inset:0; width:100%; height:100%;
+                pointer-events:none; }
+  .boxes-toggle {
+    appearance:none; cursor:pointer; font:inherit; font-size:12px; font-weight:700;
+    border:1px solid var(--line); border-radius:999px; background:#fafafa;
+    color:var(--muted); padding:3px 12px; margin-left:8px;
+  }
+  .boxes-toggle.on { background:var(--accent); border-color:var(--accent); color:#fff; }
 
   /* pipeline status rail */
   .rail { display:flex; gap:6px; margin:12px 0 6px; flex-wrap:wrap; }
@@ -103,9 +112,14 @@
 
   <div class="layout">
     <div>
-      <video id="video" controls autoplay muted playsinline></video>
+      <div class="player-frame">
+        <video id="video" controls autoplay muted playsinline></video>
+        <canvas id="faceCanvas" aria-hidden="true"></canvas>
+      </div>
       <div id="announcer" class="sr-only" aria-live="polite"></div>
       <div class="rail" id="rail" aria-label="Processing stages"></div>
+      <button class="boxes-toggle on" id="boxesToggle" aria-pressed="true"
+              hidden>Speaker boxes</button>
       <div id="statusDetail"></div>
       <div class="meter" id="meter" role="progressbar" aria-label="Transcript processing edge"
            aria-valuemin="0" aria-valuemax="100" aria-valuenow="0">
@@ -169,7 +183,7 @@ fetch('/api/videos').then(r => r.json()).then(catalogue => {
 });
 
 /* ---- pipeline status rail (transcribing only appears on the ASR path) ---- */
-const STAGES = ['captions','audio','transcribing','diarizing','attributing','chyron','done'];
+const STAGES = ['captions','audio','transcribing','diarizing','attributing','chyron','faces','done'];
 rail.innerHTML = STAGES.map(s => `<span class="stage" id="st-${s}">${s}</span>`).join('');
 const seenStages = new Set();
 function setStage(stage) {
@@ -244,9 +258,65 @@ const STAGE_WORDS = {
   diarizing: 'Identifying speaker turns.',
   attributing: 'Resolving speaker names.',
   chyron: 'Reading on-screen name graphics.',
+  faces: 'Detecting faces on screen.',
   done: 'Transcript complete.',
   cached: 'Transcript loaded instantly from cache.',
 };
+
+/* ---- face boxes: canvas overlay, gated on playhead ---- */
+let faceTracks = [];
+let boxesOn = true;
+const faceCanvas = document.getElementById('faceCanvas');
+const boxesToggle = document.getElementById('boxesToggle');
+boxesToggle.addEventListener('click', () => {
+  boxesOn = !boxesOn;
+  boxesToggle.classList.toggle('on', boxesOn);
+  boxesToggle.setAttribute('aria-pressed', boxesOn);
+  drawFaces();
+});
+
+function contentRect() {
+  // the video is letterboxed inside the element; map 0-1 coords to content
+  const ew = video.clientWidth, eh = video.clientHeight;
+  const vw = video.videoWidth || 16, vh = video.videoHeight || 9;
+  const scale = Math.min(ew / vw, eh / vh);
+  const cw = vw * scale, ch = vh * scale;
+  return {x: (ew - cw) / 2, y: (eh - ch) / 2, w: cw, h: ch};
+}
+
+function drawFaces() {
+  const ctx = faceCanvas.getContext('2d');
+  faceCanvas.width = video.clientWidth;
+  faceCanvas.height = video.clientHeight;
+  ctx.clearRect(0, 0, faceCanvas.width, faceCanvas.height);
+  if (!boxesOn || !faceTracks.length) return;
+  const t = video.currentTime;
+  const r = contentRect();
+  ctx.font = '700 13px "Segoe UI", Arial, sans-serif';
+  for (const tr of faceTracks) {
+    if (t < tr.t0 - 0.4 || t > tr.t1 + 0.4) continue;
+    // nearest sample within 0.5s (tracks are sampled at ~4 fps)
+    let best = null, bestDt = 0.5;
+    for (const b of tr.boxes) {
+      const dt = Math.abs(b.t - t);
+      if (dt < bestDt) { best = b; bestDt = dt; }
+    }
+    if (!best) continue;
+    const x = r.x + best.x * r.w, y = r.y + best.y * r.h;
+    const w = best.w * r.w, h = best.h * r.h;
+    ctx.strokeStyle = tr.name ? '#fa6400' : 'rgba(255,255,255,.75)';
+    ctx.lineWidth = 2;
+    ctx.strokeRect(x, y, w, h);
+    const label = tr.name || `Person ${tr.id}`;
+    const tw = ctx.measureText(label).width + 10;
+    ctx.fillStyle = tr.name ? '#fa6400' : 'rgba(0,0,0,.65)';
+    ctx.fillRect(x, Math.max(0, y - 20), tw, 20);
+    ctx.fillStyle = '#fff';
+    ctx.fillText(label, x + 5, Math.max(14, y - 5));
+  }
+}
+
+(function faceLoop() { drawFaces(); requestAnimationFrame(faceLoop); })();
 
 /* native caption track, generated from the same line data (works in
    fullscreen and with assistive tech; regenerated as names improve) */
@@ -321,6 +391,13 @@ es.onmessage = msg => {
         `flagged ${ev.review_status}: ` + (ev.warnings || []).slice(0,1).join('');
       announce('Transcript flagged for editorial review.');
     }
+  } else if (ev.type === 'face_tracks') {
+    faceTracks = ev.tracks || [];
+    boxesToggle.hidden = faceTracks.length === 0;
+    const named = faceTracks.filter(tr => tr.name);
+    announce(`Speaker boxes available: ${faceTracks.length} faces` +
+      (named.length ? `, named: ${named.map(tr => tr.name).join(', ')}.` : '.'));
+    drawFaces();
   } else if (ev.type === 'done') {
     setStage('done'); announce(STAGE_WORDS.done); es.close();
   }
