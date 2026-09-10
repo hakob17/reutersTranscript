@@ -177,9 +177,31 @@ class IouTracker:
         return out
 
 
-def detect_face_tracks(video, sample_fps: float = SAMPLE_FPS) -> list[dict]:
+SHOT_CUT_DIFF = 0.45      # HSV-histogram distance that counts as a hard cut
+SHOT_MIN_S = 1.0          # merge shorter "shots" into their predecessor
+
+
+def _ahash(gray_small) -> int:
+    """64-bit average hash for near-duplicate shot detection."""
+    import cv2
+    tiny = cv2.resize(gray_small, (8, 8))
+    mean = tiny.mean()
+    bits = 0
+    for v in tiny.flatten():
+        bits = (bits << 1) | (1 if v > mean else 0)
+    return int(bits)
+
+
+def hamming(a: int, b: int) -> int:
+    return bin(a ^ b).count("1")
+
+
+def detect_face_tracks(video, sample_fps: float = SAMPLE_FPS,
+                       collect_shots: bool = False):
     """Decode the video/stream, detect faces on sampled frames, return
-    tracks with normalized (0-1) boxes: [{id, name, t0, t1, boxes}]."""
+    tracks with normalized (0-1) boxes: [{id, name, t0, t1, boxes}].
+    With collect_shots=True also returns shots from the same decode:
+    [{t0, t1, key_t, jpeg, hash}] — one keyframe per hard cut."""
     import cv2
 
     detector = cv2.FaceDetectorYN_create(str(_yunet_path()), "", (320, 320),
@@ -190,6 +212,21 @@ def detect_face_tracks(video, sample_fps: float = SAMPLE_FPS) -> list[dict]:
     step = max(1, int(round(fps / sample_fps)))
 
     tracker = IouTracker()
+    shots: list[dict] = []
+    prev_hist = None
+    cur_shot: dict | None = None
+
+    def close_shot(t_end: float) -> None:
+        nonlocal cur_shot
+        if cur_shot is None:
+            return
+        cur_shot["t1"] = t_end
+        if shots and cur_shot["t1"] - cur_shot["t0"] < SHOT_MIN_S:
+            shots[-1]["t1"] = cur_shot["t1"]   # too short: merge back
+        else:
+            shots.append(cur_shot)
+        cur_shot = None
+
     idx = 0
     size_set = None
     while True:
@@ -199,12 +236,36 @@ def detect_face_tracks(video, sample_fps: float = SAMPLE_FPS) -> list[dict]:
         if idx % step == 0:
             ok, frame = cap.retrieve()
             if ok:
+                t = idx / fps
                 h, w = frame.shape[:2]
                 scale = 640 / w
                 small = cv2.resize(frame, (640, int(h * scale)))
                 if size_set != small.shape[:2]:
                     detector.setInputSize((small.shape[1], small.shape[0]))
                     size_set = small.shape[:2]
+
+                if collect_shots:
+                    gray = cv2.cvtColor(small, cv2.COLOR_BGR2GRAY)
+                    hsv = cv2.cvtColor(small, cv2.COLOR_BGR2HSV)
+                    hist = cv2.calcHist([hsv], [0, 1], None, [32, 32],
+                                        [0, 180, 0, 256])
+                    cv2.normalize(hist, hist)
+                    is_cut = (prev_hist is not None and
+                              cv2.compareHist(prev_hist, hist,
+                                              cv2.HISTCMP_CORREL) < 1 - SHOT_CUT_DIFF)
+                    prev_hist = hist
+                    if cur_shot is None or is_cut:
+                        close_shot(t)
+                        cur_shot = {"t0": t, "t1": t, "key_t": None,
+                                    "jpeg": b"", "hash": 0}
+                    # keyframe: first stable frame >=0.8s into the shot
+                    if cur_shot["key_t"] is None and t - cur_shot["t0"] >= 0.8:
+                        okj, jpg = cv2.imencode(
+                            ".jpg", small, [cv2.IMWRITE_JPEG_QUALITY, 85])
+                        if okj:
+                            cur_shot.update(key_t=t, jpeg=jpg.tobytes(),
+                                            hash=_ahash(gray))
+
                 _, faces = detector.detect(small)
                 dets = []
                 if faces is not None:
@@ -230,6 +291,9 @@ def detect_face_tracks(video, sample_fps: float = SAMPLE_FPS) -> list[dict]:
                 tracker.update(idx / fps, dets)
         idx += 1
     cap.release()
+    if collect_shots:
+        close_shot(idx / fps)
+        return tracker.finish(), [s for s in shots if s["jpeg"]]
     return tracker.finish()
 
 

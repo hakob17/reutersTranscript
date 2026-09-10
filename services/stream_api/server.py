@@ -263,9 +263,10 @@ class Job:
     subscribers replay the log from 0 and then follow live — which makes
     late joiners, concurrent viewers, and cache replay the same code path."""
 
-    def __init__(self, video_id: str, url: str):
+    def __init__(self, video_id: str, url: str, title: str = ""):
         self.video_id = video_id
         self.url = url
+        self.title = title
         self.events: list[dict] = []
         self.done = False
         self.cond = threading.Condition()
@@ -318,7 +319,7 @@ class Job:
 
             # translations go out before the slow audio stages — a viewer
             # who can't read the source language needs them first
-            self._translate_lines(cues)
+            translations = self._translate_lines(cues)
 
             device = _device()
             emit({"type": "status", "stage": "diarizing",
@@ -378,7 +379,7 @@ class Job:
         try:
             from speaker_attribution.faces import (
                 bind_names_to_tracks, bind_tracks_to_turns, detect_face_tracks)
-            tracks = detect_face_tracks(self.url)
+            tracks, shots = detect_face_tracks(self.url, collect_shots=True)
             face_warnings = bind_names_to_tracks(tracks, sightings)
             # voice-over narrators are off-camera by definition — their
             # turns must never claim a B-roll face
@@ -398,8 +399,39 @@ class Job:
                   "detail": f"{len(tracks)} face tracks, {named} named, "
                             f"{linked} linked to speakers"})
         except Exception as exc:  # vision pass is best-effort
+            shots = []
             emit({"type": "status", "stage": "faces",
                   "detail": f"face pass failed, continuing without boxes: {exc}"})
+
+        # Phase-4 slice: tiered scene descriptions (free skip/dup tiers, then
+        # Haiku with Opus escalation). Trails everything; described rows land
+        # as one more retroactive update.
+        if shots:
+            emit({"type": "status", "stage": "scenes",
+                  "detail": f"describing {len(shots)} shots "
+                            "(talking-head/dup skip, haiku→opus)"})
+            try:
+                from speaker_attribution.scenes import describe_shots
+                display_names = {
+                    label: (m.name if m.name != "Unidentified"
+                            else (m.role or "Speaker"))
+                    for label, m in result.mappings.items()}
+                ctx = [it["en"] for it in translations[:40]] if translations \
+                    else [c["text"] for c in cues[:40]]
+                context = (f"News video: {self.title or self.video_id}\n"
+                           "Caption excerpts for grounding only:\n"
+                           + "\n".join(ctx))
+                scene_list, stats = describe_shots(
+                    shots, tracks, display_names, context)
+                emit({"type": "scene_text", "scenes": scene_list})
+                emit({"type": "status", "stage": "scenes",
+                      "detail": (f"{len(scene_list)} descriptions — "
+                                 f"free: {stats['skip'] + stats['dup']}, "
+                                 f"haiku: {stats['haiku']}, "
+                                 f"opus: {stats['opus']}")})
+            except Exception as exc:
+                emit({"type": "status", "stage": "scenes",
+                      "detail": f"scene pass failed: {exc}"})
 
         emit({"type": "done"})
 
@@ -416,7 +448,7 @@ class Job:
         arabic = sum(1 for ch in sample if "؀" <= ch <= "ۿ")
         latin = sum(1 for ch in sample if ch.isascii() and ch.isalpha())
         if arabic < max(20, latin):          # looks English/Latin — skip
-            return
+            return []
         self.emit({"type": "status", "stage": "translating",
                    "detail": f"translating {len(cues)} lines to English"})
         try:
@@ -439,9 +471,11 @@ class Job:
             self.emit({"type": "translations", "src": "ar", "items": items})
             self.emit({"type": "status", "stage": "translating",
                        "detail": f"{len(items)} lines translated"})
+            return items
         except Exception as exc:  # translation is an enhancement, never fatal
             self.emit({"type": "status", "stage": "translating",
                        "detail": f"translation failed: {exc}"})
+        return []
 
     @staticmethod
     def _names_event(result, phase: str) -> dict:
@@ -549,7 +583,8 @@ class Registry:
             if fresh:
                 cached.unlink(missing_ok=True)
 
-            job = Job(video_id, url)
+            job = Job(video_id, url,
+                      VIDEOS.get(video_id, {}).get("title", ""))
             self.jobs[video_id] = job
             if not fresh and cached.exists():    # cache: replay, no processing
                 job.events = json.loads(cached.read_text(encoding="utf-8"))
