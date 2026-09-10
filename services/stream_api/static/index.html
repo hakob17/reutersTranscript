@@ -384,8 +384,15 @@ function speakerLabelAt(t) {
   return l ? l.label : null;
 }
 
+// face-match-only names below the confidence bar are hedged, never asserted.
+// The server sets name_tentative; the gallery-score fallback covers caches
+// written before that field existed (mirrors gallery.HIGH_CONFIDENCE).
+function isTentative(tr) {
+  return tr.name_tentative ?? (tr.gallery != null && tr.gallery < 0.6);
+}
+
 function speakerDisplayName(tr, label) {
-  if (tr.name) return tr.name;                     // chyron-bound
+  if (tr.name) return isTentative(tr) ? `Possibly ${tr.name}` : tr.name;
   const m = mapping && label ? mapping[label] : null;
   if (m && m.name !== 'Unidentified') return m.name;
   if (m && m.role) return m.role;
@@ -434,7 +441,9 @@ function drawFaces() {
     const x = r.x + box.x * r.w, y = r.y + box.y * r.h;
     ctx.strokeStyle = 'rgba(255,255,255,.55)';
     ctx.lineWidth = 1.5;
+    ctx.setLineDash(isTentative(tr) ? [5, 4] : []);   // dashed = tentative
     ctx.strokeRect(x, y, box.w * r.w, box.h * r.h);
+    ctx.setLineDash([]);
     const text = speakerDisplayName(tr, tr.speaker_label);
     if (text && text !== 'Speaking') {
       ctx.fillStyle = 'rgba(0,0,0,.55)';

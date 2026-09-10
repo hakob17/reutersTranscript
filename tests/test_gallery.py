@@ -31,3 +31,9 @@ def test_enroll_caps_embeddings():
     for i in range(15):
         enroll(g, "A", _vec(i + 1), f"src{i}")
     assert len(g["A"]["embs"]) == 10 and len(g["A"]["sources"]) == 10
+
+
+def test_confidence_tiers():
+    from speaker_attribution.gallery import HIGH_CONFIDENCE, is_confident
+    assert is_confident(0.82) and is_confident(HIGH_CONFIDENCE)
+    assert not is_confident(0.494)            # correct-but-weak -> hedged
