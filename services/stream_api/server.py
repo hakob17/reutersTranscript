@@ -559,13 +559,52 @@ class Job:
             bind_tracks_to_turns(tracks, turns, exclude_labels=vo_labels)
             for i, tr in enumerate(tracks, 1):  # small stable display ids
                 tr["id"] = i
+            # face gallery: enroll evidence-named identities, then try to
+            # recognize everyone else (speaking or not). Enrollment is
+            # restricted to broadcast-named people by design (DESIGN.md §9).
+            enrolled = recognized = 0
+            try:
+                from speaker_attribution.gallery import (
+                    enroll, load_gallery, match, save_gallery)
+                gallery = load_gallery()
+                for tr in tracks:
+                    if "emb" not in tr:
+                        continue
+                    ev_name = tr["name"]
+                    if not ev_name and tr.get("speaker_label"):
+                        m = result.mappings.get(tr["speaker_label"])
+                        if m and m.confidence == "high" \
+                                and m.name != "Unidentified":
+                            ev_name = m.name
+                            # name the track from its own evidence — otherwise
+                            # the matching loop below would match this track
+                            # against its own enrolled embedding (sim 1.0)
+                            tr["name"] = ev_name
+                    if ev_name:
+                        enroll(gallery, ev_name, tr["emb"],
+                               f"{self.video_id} @{tr['t0']:.0f}s")
+                for tr in tracks:
+                    if tr["name"] or "emb" not in tr:
+                        continue
+                    hit = match(gallery, tr["emb"])
+                    if hit:
+                        tr["name"], score = hit
+                        tr["gallery"] = score
+                        recognized += 1
+                save_gallery(gallery)
+            except Exception:
+                pass
+            for tr in tracks:
+                tr.pop("emb", None)   # embeddings never leave the server
+
             named = sum(1 for t in tracks if t["name"])
             linked = sum(1 for t in tracks if t.get("speaker_label"))
             emit({"type": "face_tracks", "tracks": tracks,
                   "warnings": face_warnings})
             emit({"type": "status", "stage": "faces",
                   "detail": f"{len(tracks)} face tracks, {named} named, "
-                            f"{linked} linked to speakers"})
+                            f"{linked} linked to speakers, "
+                            f"{recognized} recognized from gallery"})
         except Exception as exc:  # vision pass is best-effort
             shots = []
             emit({"type": "status", "stage": "faces",

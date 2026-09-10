@@ -33,6 +33,12 @@ python web/pack.py                             # one-file shareable demo HTML
 # one job per video id, finished event log cached in out_stream/
 python -m uvicorn services.stream_api.server:app --port 8031
 
+# face gallery (gallery.json, gitignored): seed public figures from
+# Wikidata/Commons, or enroll a local headshot
+python scripts/seed_gallery.py --demo
+python scripts/seed_gallery.py "Name One" "Name Two" --dry-run
+python scripts/seed_gallery.py --image headshot.jpg --name "Jane Doe"
+
 # infra
 bash scripts/build_lambdas.sh                  # stage build/lambdas/* (run before plan)
 terraform -chdir=infra validate
@@ -68,6 +74,14 @@ frames to the vision model — detection gates what reaches the API.
   failure falls back to ASR silently — keep that contract.
 - `whisperx.diarize` is NOT auto-imported by `import whisperx` — use
   `from whisperx.diarize import DiarizationPipeline` (transcribe.py does).
+- Face gallery policy: enroll ONLY chyron-named tracks, tracks linked to a
+  high-confidence named speaker, Wikidata-verified public figures, or manual
+  headshots — never anonymous tracks. Embeddings are stripped before any
+  event leaves the server. Speaker-evidence tracks must get `name` set at
+  enrollment or they self-match (sim 1.0). Dark face crops (luma < 50) are
+  never embedded — low-light embeddings collapse into false matches.
+- Face voting excludes ANY narrator/voice-over label (named or not): lip
+  motion can't tell "speaking now" from "speaking in archive footage".
 - WhisperX ≥3.4: `DiarizationPipeline(token=...)` (not `use_auth_token=`);
   default diarization model is gated `pyannote/speaker-diarization-community-1`
   — the HF account must accept its terms (3.1 alone is NOT enough: pyannote 4.x

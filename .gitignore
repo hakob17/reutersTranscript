@@ -17,3 +17,4 @@ transcript_demo.zip
 *.tfstate
 *.tfstate.*
 services/stream_api/static/live/
+gallery.json
