@@ -16,3 +16,4 @@ transcript_demo.zip
 .terraform/
 *.tfstate
 *.tfstate.*
+services/stream_api/static/live/
