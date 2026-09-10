@@ -354,6 +354,7 @@ class Job:
         # stream), landing as one more retroactive update.
         emit({"type": "status", "stage": "chyron",
               "detail": "scanning the stream for on-screen name graphics"})
+        sightings: list[dict] = []
         try:
             from speaker_attribution.chyron import (
                 _find_chyron_frames, merge_chyrons, read_chyron_crops)
@@ -366,11 +367,30 @@ class Job:
             emit({"type": "status", "stage": "chyron",
                   "detail": f"chyron pass failed, keeping transcript names: {exc}"})
 
+        # Phase-3 slice: face tracks + conservative name binding. Trails
+        # everything else; boxes appear as one more retroactive update.
+        emit({"type": "status", "stage": "faces",
+              "detail": "detecting and tracking faces in the stream"})
+        try:
+            from speaker_attribution.faces import (
+                bind_names_to_tracks, detect_face_tracks)
+            tracks = detect_face_tracks(self.url)
+            face_warnings = bind_names_to_tracks(tracks, sightings)
+            named = sum(1 for t in tracks if t["name"])
+            emit({"type": "face_tracks", "tracks": tracks,
+                  "warnings": face_warnings})
+            emit({"type": "status", "stage": "faces",
+                  "detail": f"{len(tracks)} face tracks, {named} named"})
+        except Exception as exc:  # vision pass is best-effort
+            emit({"type": "status", "stage": "faces",
+                  "detail": f"face pass failed, continuing without boxes: {exc}"})
+
         emit({"type": "done"})
 
         CACHE_DIR.mkdir(exist_ok=True)
         (CACHE_DIR / f"{self.video_id}.events.json").write_text(
-            json.dumps(self.events, ensure_ascii=False), encoding="utf-8")
+            json.dumps(self.events, ensure_ascii=False, default=float),
+            encoding="utf-8")
 
     @staticmethod
     def _names_event(result, phase: str) -> dict:
@@ -498,7 +518,9 @@ app = FastAPI(title="streaming transcript demo")
 
 @app.get("/")
 def index():
-    return FileResponse(STATIC_DIR / "index.html")
+    # no-cache: a stale cached frontend silently ignores new event types
+    return FileResponse(STATIC_DIR / "index.html",
+                        headers={"Cache-Control": "no-cache"})
 
 
 @app.get("/api/videos")
@@ -525,7 +547,8 @@ def stream(video_id: str, fresh: int = 0):
                 sent = len(job.events)
                 finished = job.done
             for ev in pending:
-                yield f"data: {json.dumps(ev, ensure_ascii=False)}\n\n"
+                # default=float: stray numpy scalars must never kill the stream
+                yield f"data: {json.dumps(ev, ensure_ascii=False, default=float)}\n\n"
             if finished and sent >= len(job.events):
                 return
             if not pending:  # keep proxies from closing an idle stream
