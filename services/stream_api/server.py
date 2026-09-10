@@ -376,7 +376,14 @@ class Job:
                 bind_names_to_tracks, bind_tracks_to_turns, detect_face_tracks)
             tracks = detect_face_tracks(self.url)
             face_warnings = bind_names_to_tracks(tracks, sightings)
-            bind_tracks_to_turns(tracks, turns)
+            # voice-over narrators are off-camera by definition — their
+            # turns must never claim a B-roll face
+            import re as _re
+            vo_labels = {label for label, m in result.mappings.items()
+                         if m.name == "Unidentified"
+                         and _re.search(r"narrat|voice.?over",
+                                        m.role, _re.IGNORECASE)}
+            bind_tracks_to_turns(tracks, turns, exclude_labels=vo_labels)
             for i, tr in enumerate(tracks, 1):  # small stable display ids
                 tr["id"] = i
             named = sum(1 for t in tracks if t["name"])

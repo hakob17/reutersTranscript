@@ -39,6 +39,9 @@ LIP_MIN_SAMPLES = 5       # need this many MAR samples in a turn to score
 LIP_MARGIN = 1.6          # winner's lip energy must beat runner-up by this
 LIP_FLOOR = 0.02          # and exceed this absolute energy (still faces ~0.005)
 ASD_MAX_FACES = 4         # score lip motion only in 2..N-face shots
+COVERAGE_MIN = 0.15       # a label's linked faces must cover this fraction of
+                          # its speech time, else the links are stripped (a
+                          # 5s "match" against 95s of voice-over is a bystander)
 
 
 def best_rendition_for_faces(url: str) -> str:
@@ -254,20 +257,28 @@ def _lip_energy(track: dict, t0: float, t1: float) -> float | None:
 
 
 def bind_tracks_to_turns(tracks: list[dict],
-                         turns: list[tuple[float, float, str]]) -> None:
+                         turns: list[tuple[float, float, str]],
+                         exclude_labels: set[str] | None = None) -> None:
     """ASD: link face tracks to diarization labels.
 
     Solo shots vote by visibility (the single prominent face during a turn
-    is the speaker). Multi-face shots (2..ASD_MAX_FACES) vote by lip motion:
-    the face whose mouth-aspect-ratio oscillates while the turn is live wins,
-    but only with a clear margin over the runner-up — ambiguity binds
-    nothing. A track takes a label only with a 2x vote margin. Sets
-    track["speaker_label"]. (Trained Light-ASD remains the upgrade path.)
+    is the speaker) — gated by lip motion when landmarks are available, so a
+    voice-over playing across a silent B-roll face binds nothing. Multi-face
+    shots (2..ASD_MAX_FACES) vote by lip motion: the face whose
+    mouth-aspect-ratio oscillates while the turn is live wins, but only with
+    a clear margin over the runner-up — ambiguity binds nothing. A track
+    takes a label only with a 2x vote margin. `exclude_labels` (e.g.
+    narrator/voice-over labels, who are off-camera by definition) never
+    vote. Sets track["speaker_label"]. (Light-ASD remains the upgrade path.)
     """
+    exclude_labels = exclude_labels or set()
+    # legacy mode when no landmarks exist at all (mediapipe unavailable)
+    has_mar = any("mar" in b for tr in tracks for b in tr["boxes"][:80])
+
     votes: dict[int, dict[str, int]] = {}
     for t0, t1, label in turns:
         dur = t1 - t0
-        if dur < 1.0:
+        if dur < 1.0 or label in exclude_labels:
             continue
         visible = []
         for tr in tracks:
@@ -278,7 +289,14 @@ def bind_tracks_to_turns(tracks: list[dict],
 
         winner = None
         if len(visible) == 1:
-            winner = visible[0]
+            if has_mar:
+                # even solo, the face must actually be talking — a VO line
+                # over a still face is not this face speaking
+                e = _lip_energy(visible[0], t0, t1)
+                if e is not None and e >= LIP_FLOOR:
+                    winner = visible[0]
+            else:
+                winner = visible[0]
         elif 2 <= len(visible) <= ASD_MAX_FACES:
             scored = [(tr, _lip_energy(tr, t0, t1)) for tr in visible]
             scored = [(tr, e) for tr, e in scored if e is not None]
@@ -303,6 +321,24 @@ def bind_tracks_to_turns(tracks: list[dict],
         second = ranked[1][1] if len(ranked) > 1 else 0
         if top >= 1 and top >= 2 * second:
             tr["speaker_label"] = top_label
+
+    # coverage consistency: an on-camera voice shows its face across much of
+    # its speech; a sliver of "match" against long speech is a false positive
+    # (masked/occluded faces make lip noise). Strip inconsistent labels.
+    speech_time: dict[str, float] = {}
+    for t0, t1, label in turns:
+        speech_time[label] = speech_time.get(label, 0.0) + (t1 - t0)
+    linked_time: dict[str, float] = {}
+    for tr in tracks:
+        if tr["speaker_label"]:
+            linked_time[tr["speaker_label"]] = (
+                linked_time.get(tr["speaker_label"], 0.0)
+                + (tr["t1"] - tr["t0"]))
+    for tr in tracks:
+        label = tr["speaker_label"]
+        if label and speech_time.get(label, 0.0) > 0 and \
+                linked_time.get(label, 0.0) < COVERAGE_MIN * speech_time[label]:
+            tr["speaker_label"] = None
 
 
 def bind_names_to_tracks(tracks: list[dict], sightings: list[dict]) -> list[str]:
