@@ -33,6 +33,13 @@ def test_enroll_caps_embeddings():
     assert len(g["A"]["embs"]) == 10 and len(g["A"]["sources"]) == 10
 
 
+def test_enroll_idempotent_per_source():
+    g = {}
+    assert enroll(g, "A", _vec(1), "wikidata:Q1") is True
+    assert enroll(g, "A", _vec(1), "wikidata:Q1") is False   # re-seed: no-op
+    assert len(g["A"]["embs"]) == 1
+
+
 def test_confidence_tiers():
     from speaker_attribution.gallery import HIGH_CONFIDENCE, is_confident
     assert is_confident(0.82) and is_confident(HIGH_CONFIDENCE)

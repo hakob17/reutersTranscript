@@ -51,6 +51,21 @@ DEMO_PEOPLE = [
     ("Amrullah Saleh", "Amrullah Saleh"),
     ("Pam Bondi", "Pam Bondi"),
     ("Emmanuel Macron", "Emmanuel Macron"),
+    # further figures featured in or discussed by catalogue videos
+    ("Todd Blanche", "Todd Blanche"),
+    ("Benjamin Netanyahu", "Benjamin Netanyahu"),
+    ("Mahmoud Abbas", "Mahmoud Abbas"),
+    ("Mohamed bin Zayed", "Mohamed bin Zayed Al Nahyan"),
+    ("Robert O'Brien", "Robert C. O'Brien"),
+    ("Mike Pompeo", "Mike Pompeo"),
+    ("Antonio Guterres", "António Guterres"),
+    ("David Beasley", "David Beasley"),
+    ("Carrie Lam", "Carrie Lam"),
+    ("Imran Khan", "Imran Khan"),
+    ("Michel Barnier", "Michel Barnier"),
+    ("Ursula von der Leyen", "Ursula von der Leyen"),
+    ("Abdalla Hamdok", "Abdalla Hamdok"),
+    ("Cate Blanchett", "Cate Blanchett"),
 ]
 
 
@@ -143,8 +158,8 @@ def main() -> int:
             print(f"SKIP {args.image}: {n} faces detected (need exactly 1)")
         else:
             print(f"OK   {args.name} <- {args.image}")
-            if not args.dry_run:
-                enroll(gallery, args.name, emb, f"manual:{args.image.name}")
+            if not args.dry_run and enroll(gallery, args.name, emb,
+                                           f"manual:{args.image.name}"):
                 added += 1
 
     people = [(n, n) for n in args.names]
@@ -175,12 +190,13 @@ def main() -> int:
             print(f"SKIP {display}: {hit['qid']} image has {n} faces "
                   "(need exactly 1)")
             continue
-        print(f"OK   {display} -> {hit['qid']} ({hit['description']}) "
+        new = (not args.dry_run and
+               enroll(gallery, display, emb,
+                      f"wikidata:{hit['qid']} commons:{hit['file']}"))
+        added += int(new)
+        status = "OK  " if new or args.dry_run else "HAVE"
+        print(f"{status} {display} -> {hit['qid']} ({hit['description']}) "
               f"| {hit['file']}")
-        if not args.dry_run:
-            enroll(gallery, display, emb,
-                   f"wikidata:{hit['qid']} commons:{hit['file']}")
-            added += 1
 
     if added:
         save_gallery(gallery)

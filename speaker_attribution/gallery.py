@@ -74,12 +74,17 @@ def save_gallery(gallery: dict) -> None:
                             encoding="utf-8")
 
 
-def enroll(gallery: dict, name: str, emb: list[float], source: str) -> None:
+def enroll(gallery: dict, name: str, emb: list[float], source: str) -> bool:
+    """Add an embedding; idempotent per source (re-seeding or reprocessing
+    the same video adds nothing). Returns True if something was added."""
     entry = gallery.setdefault(name, {"embs": [], "sources": []})
+    if source in entry["sources"]:
+        return False
     entry["embs"].append(emb)
     entry["sources"].append(source)
     entry["embs"] = entry["embs"][-MAX_EMBS_PER_NAME:]
     entry["sources"] = entry["sources"][-MAX_EMBS_PER_NAME:]
+    return True
 
 
 def is_confident(score: float) -> bool:
