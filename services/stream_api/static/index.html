@@ -75,6 +75,7 @@
   .seg.future { opacity:.55; }
   .seg .t { color:var(--muted); font-size:12px; float:right; font-variant-numeric:tabular-nums; }
   .seg .text { font-size:14.5px; margin-top:3px; }
+  .seg .text-en { font-size:13px; margin-top:2px; color:var(--muted); font-style:italic; }
   .chip { display:inline-block; font-size:11px; font-weight:700; border-radius:3px;
           padding:1px 7px; letter-spacing:.3px; }
   .chip.pending { background:#eee; color:var(--pending); }
@@ -120,6 +121,8 @@
       <div class="rail" id="rail" aria-label="Processing stages"></div>
       <button class="boxes-toggle on" id="boxesToggle" aria-pressed="true"
               hidden>Speaker boxes</button>
+      <button class="boxes-toggle on" id="enToggle" aria-pressed="true"
+              hidden>English</button>
       <div id="statusDetail"></div>
       <div class="meter" id="meter" role="progressbar" aria-label="Transcript processing edge"
            aria-valuemin="0" aria-valuemax="100" aria-valuenow="0">
@@ -183,7 +186,7 @@ fetch('/api/videos').then(r => r.json()).then(catalogue => {
 });
 
 /* ---- pipeline status rail (transcribing only appears on the ASR path) ---- */
-const STAGES = ['captions','audio','transcribing','diarizing','attributing','chyron','faces','done'];
+const STAGES = ['captions','audio','transcribing','translating','diarizing','attributing','chyron','faces','done'];
 rail.innerHTML = STAGES.map(s => `<span class="stage" id="st-${s}">${s}</span>`).join('');
 const seenStages = new Set();
 function setStage(stage) {
@@ -233,7 +236,8 @@ function renderLine(l) {
     box.appendChild(el);
   }
   el.setAttribute('aria-label', `Jump to ${fmt(l.start)}`);
-  el.innerHTML = `<span class="t">${fmt(l.start)}</span>${chipHtml(l)}<div class="text" dir="auto">${l.text}</div>`;
+  el.innerHTML = `<span class="t">${fmt(l.start)}</span>${chipHtml(l)}<div class="text" dir="auto">${l.text}</div>` +
+    (l.en && showEn ? `<div class="text-en" dir="ltr">${l.en}</div>` : '');
   document.getElementById('lineCount').textContent = `· ${lines.length} lines`;
 }
 function seekTo(el) {
@@ -257,11 +261,22 @@ const STAGE_WORDS = {
   transcribing: 'Transcribing audio.',
   diarizing: 'Identifying speaker turns.',
   attributing: 'Resolving speaker names.',
+  translating: 'Translating the transcript to English.',
   chyron: 'Reading on-screen name graphics.',
   faces: 'Detecting faces on screen.',
   done: 'Transcript complete.',
   cached: 'Transcript loaded instantly from cache.',
 };
+
+/* ---- English translations for non-English transcripts ---- */
+let showEn = true;
+const enToggle = document.getElementById('enToggle');
+enToggle.addEventListener('click', () => {
+  showEn = !showEn;
+  enToggle.classList.toggle('on', showEn);
+  enToggle.setAttribute('aria-pressed', showEn);
+  lines.forEach(renderLine);
+});
 
 /* ---- face boxes: canvas overlay, gated on playhead ---- */
 let faceTracks = [];
@@ -419,6 +434,10 @@ es.onmessage = msg => {
         `flagged ${ev.review_status}: ` + (ev.warnings || []).slice(0,1).join('');
       announce('Transcript flagged for editorial review.');
     }
+  } else if (ev.type === 'translations') {
+    for (const it of ev.items) if (lines[it.i]) { lines[it.i].en = it.en; renderLine(lines[it.i]); }
+    enToggle.hidden = false;
+    announce(`English translation available for ${ev.items.length} lines.`);
   } else if (ev.type === 'face_tracks') {
     faceTracks = ev.tracks || [];
     const linked = faceTracks.filter(tr => tr.speaker_label);

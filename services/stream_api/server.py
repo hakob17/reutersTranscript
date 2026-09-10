@@ -316,6 +316,10 @@ class Job:
                 wav = extract_audio(self.url, Path(td) / f"{self.video_id}.wav")
                 cues = self._asr_stream(wav)
 
+            # translations go out before the slow audio stages — a viewer
+            # who can't read the source language needs them first
+            self._translate_lines(cues)
+
             device = _device()
             emit({"type": "status", "stage": "diarizing",
                   "detail": f"pyannote speaker turns on {device}"})
@@ -403,6 +407,41 @@ class Job:
         (CACHE_DIR / f"{self.video_id}.events.json").write_text(
             json.dumps(self.events, ensure_ascii=False, default=float),
             encoding="utf-8")
+
+    def _translate_lines(self, cues: list[dict]) -> None:
+        """For non-English transcripts, emit English translations per line
+        (viewers who don't read the source language follow along live).
+        Detection is script-based; failures are non-fatal."""
+        sample = " ".join(c["text"] for c in cues[:20])
+        arabic = sum(1 for ch in sample if "؀" <= ch <= "ۿ")
+        latin = sum(1 for ch in sample if ch.isascii() and ch.isalpha())
+        if arabic < max(20, latin):          # looks English/Latin — skip
+            return
+        self.emit({"type": "status", "stage": "translating",
+                   "detail": f"translating {len(cues)} lines to English"})
+        try:
+            import anthropic
+            client = anthropic.Anthropic()
+            numbered = "\n".join(f"{i}\t{c['text']}" for i, c in enumerate(cues))
+            resp = client.messages.create(
+                model="claude-sonnet-4-6", max_tokens=8000,
+                system=("You translate news captions to English. Reply with "
+                        "ONLY a JSON object, no markdown fences: "
+                        '{"translations": [{"i": <line number>, "en": "..."}]} '
+                        "— one entry per input line, faithful and concise; "
+                        "keep names and titles as commonly romanized."),
+                messages=[{"role": "user", "content": numbered}])
+            raw = "".join(b.text for b in resp.content if b.type == "text")
+            raw = raw.replace("```json", "").replace("```", "").strip()
+            items = json.loads(raw).get("translations", [])
+            items = [it for it in items
+                     if isinstance(it.get("i"), int) and it.get("en")]
+            self.emit({"type": "translations", "src": "ar", "items": items})
+            self.emit({"type": "status", "stage": "translating",
+                       "detail": f"{len(items)} lines translated"})
+        except Exception as exc:  # translation is an enhancement, never fatal
+            self.emit({"type": "status", "stage": "translating",
+                       "detail": f"translation failed: {exc}"})
 
     @staticmethod
     def _names_event(result, phase: str) -> dict:
