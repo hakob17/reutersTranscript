@@ -373,14 +373,19 @@ class Job:
               "detail": "detecting and tracking faces in the stream"})
         try:
             from speaker_attribution.faces import (
-                bind_names_to_tracks, detect_face_tracks)
+                bind_names_to_tracks, bind_tracks_to_turns, detect_face_tracks)
             tracks = detect_face_tracks(self.url)
             face_warnings = bind_names_to_tracks(tracks, sightings)
+            bind_tracks_to_turns(tracks, turns)
+            for i, tr in enumerate(tracks, 1):  # small stable display ids
+                tr["id"] = i
             named = sum(1 for t in tracks if t["name"])
+            linked = sum(1 for t in tracks if t.get("speaker_label"))
             emit({"type": "face_tracks", "tracks": tracks,
                   "warnings": face_warnings})
             emit({"type": "status", "stage": "faces",
-                  "detail": f"{len(tracks)} face tracks, {named} named"})
+                  "detail": f"{len(tracks)} face tracks, {named} named, "
+                            f"{linked} linked to speakers"})
         except Exception as exc:  # vision pass is best-effort
             emit({"type": "status", "stage": "faces",
                   "detail": f"face pass failed, continuing without boxes: {exc}"})
