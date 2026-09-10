@@ -120,6 +120,12 @@ Code is split into deployment units under `services/` (Batch GPU task
 container + five Lambdas) reusing the same `speaker_attribution` package.
 See [infra/README.md](infra/README.md) for deploy steps.
 
+## Design
+[docs/DESIGN.md](docs/DESIGN.md) — the adopted full-pipeline plan: per-modality
+worker pools, timeline fusion with identity voting, self-hosted vLLM tier,
+five phases (streaming transcript → diarization fusion → vision track →
+scene descriptions → live mode).
+
 ## Next steps (phase 3)
 - Speaker library: enroll correspondent/official voice embeddings in pyannote
   so recurring voices are named without the LLM step
