@@ -145,6 +145,45 @@ def test_turn_binding_coverage_keeps_consistent_speaker():
     assert tracks[0]["speaker_label"] == "SPEAKER_00"
 
 
+def test_tracker_refuses_identity_change_at_same_position():
+    # dissolve: a different face appears where the old one was
+    tr = IouTracker()
+    a, b = [1.0, 0.0, 0.0], [0.0, 1.0, 0.0]
+    for i in range(6):
+        tr.update(i * 0.25, [{**_det(0.3), "emb": a}])
+    for i in range(6, 12):
+        tr.update(i * 0.25, [{**_det(0.3), "emb": b}])
+    assert len(tr.finish()) == 2
+
+
+def test_tracker_cut_closes_tracks():
+    tr = IouTracker()
+    for i in range(6):
+        tr.update(i * 0.25, [_det(0.3)])
+    tr.cut()
+    for i in range(6, 12):
+        tr.update(i * 0.25, [_det(0.3)])
+    assert len(tr.finish()) == 2
+
+
+def test_track_consistency_net_drops_drifting_embedding():
+    # slow drift a -> b passes each per-step check, but halves disagree
+    tr = IouTracker()
+    n = 12
+    for i in range(n):
+        s = i / (n - 1)
+        tr.update(i * 0.25, [{**_det(0.3), "emb": [1 - s, s]}])
+    tracks = tr.finish()
+    assert len(tracks) == 1 and "emb" not in tracks[0]
+
+
+def test_yaw_ratio():
+    from speaker_attribution.faces import _yaw
+    frontal = [0, 0, 0, 0, 40, 50, 60, 50, 50, 60]   # nose centred
+    profile = [0, 0, 0, 0, 40, 50, 50, 50, 70, 60]   # nose far outside
+    assert _yaw(frontal) < 0.1 and _yaw(profile) > 1.0
+
+
 def test_binding_conflict_unbinds():
     tracks = [_track(1, 0.0, 10.0, 0.4)]
     warnings = bind_names_to_tracks(tracks, [
