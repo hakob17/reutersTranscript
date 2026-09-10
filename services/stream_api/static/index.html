@@ -284,6 +284,30 @@ function contentRect() {
   return {x: (ew - cw) / 2, y: (eh - ch) / 2, w: cw, h: ch};
 }
 
+function boxAt(tr, t) {
+  if (t < tr.t0 - 0.4 || t > tr.t1 + 0.4) return null;
+  let best = null, bestDt = 0.5;   // tracks are sampled at ~4 fps
+  for (const b of tr.boxes) {
+    const dt = Math.abs(b.t - t);
+    if (dt < bestDt) { best = b; bestDt = dt; }
+  }
+  return best;
+}
+
+function speakerLabelAt(t) {
+  const l = lines.find(l => l && t >= l.start && t < l.end);
+  return l ? l.label : null;
+}
+
+function speakerDisplayName(tr, label) {
+  if (tr.name) return tr.name;                     // chyron-bound
+  const m = mapping && label ? mapping[label] : null;
+  if (m && m.name !== 'Unidentified') return m.name;
+  if (m && m.role) return m.role;
+  return 'Speaking';
+}
+
+const CROWD_LIMIT = 5;
 function drawFaces() {
   const ctx = faceCanvas.getContext('2d');
   faceCanvas.width = video.clientWidth;
@@ -291,28 +315,32 @@ function drawFaces() {
   ctx.clearRect(0, 0, faceCanvas.width, faceCanvas.height);
   if (!boxesOn || !faceTracks.length) return;
   const t = video.currentTime;
+
+  // Only the CURRENT SPEAKER's face gets a box — bystanders never do, and
+  // crowd shots (> CROWD_LIMIT faces) draw nothing unless the speaker's own
+  // track is confidently linked.
+  const label = speakerLabelAt(t);
+  if (!label) return;
+  const visible = faceTracks.map(tr => ({tr, box: boxAt(tr, t)}))
+                            .filter(v => v.box);
+  const speakerBoxes = visible.filter(v => v.tr.speaker_label === label);
+  if (!speakerBoxes.length) return;
+  if (visible.length > CROWD_LIMIT && !speakerBoxes.length) return;
+
   const r = contentRect();
   ctx.font = '700 13px "Segoe UI", Arial, sans-serif';
-  for (const tr of faceTracks) {
-    if (t < tr.t0 - 0.4 || t > tr.t1 + 0.4) continue;
-    // nearest sample within 0.5s (tracks are sampled at ~4 fps)
-    let best = null, bestDt = 0.5;
-    for (const b of tr.boxes) {
-      const dt = Math.abs(b.t - t);
-      if (dt < bestDt) { best = b; bestDt = dt; }
-    }
-    if (!best) continue;
-    const x = r.x + best.x * r.w, y = r.y + best.y * r.h;
-    const w = best.w * r.w, h = best.h * r.h;
-    ctx.strokeStyle = tr.name ? '#fa6400' : 'rgba(255,255,255,.75)';
+  for (const {tr, box} of speakerBoxes) {
+    const x = r.x + box.x * r.w, y = r.y + box.y * r.h;
+    const w = box.w * r.w, h = box.h * r.h;
+    ctx.strokeStyle = '#fa6400';
     ctx.lineWidth = 2;
     ctx.strokeRect(x, y, w, h);
-    const label = tr.name || `Person ${tr.id}`;
-    const tw = ctx.measureText(label).width + 10;
-    ctx.fillStyle = tr.name ? '#fa6400' : 'rgba(0,0,0,.65)';
+    const text = speakerDisplayName(tr, label);
+    const tw = ctx.measureText(text).width + 10;
+    ctx.fillStyle = '#fa6400';
     ctx.fillRect(x, Math.max(0, y - 20), tw, 20);
     ctx.fillStyle = '#fff';
-    ctx.fillText(label, x + 5, Math.max(14, y - 5));
+    ctx.fillText(text, x + 5, Math.max(14, y - 5));
   }
 }
 
@@ -393,10 +421,11 @@ es.onmessage = msg => {
     }
   } else if (ev.type === 'face_tracks') {
     faceTracks = ev.tracks || [];
-    boxesToggle.hidden = faceTracks.length === 0;
-    const named = faceTracks.filter(tr => tr.name);
-    announce(`Speaker boxes available: ${faceTracks.length} faces` +
-      (named.length ? `, named: ${named.map(tr => tr.name).join(', ')}.` : '.'));
+    const linked = faceTracks.filter(tr => tr.speaker_label);
+    boxesToggle.hidden = linked.length === 0;
+    announce(linked.length
+      ? `Speaker highlighting available for ${linked.length} on-screen appearances.`
+      : 'Face pass complete; no speaker faces could be confidently linked.');
     drawFaces();
   } else if (ev.type === 'done') {
     setStage('done'); announce(STAGE_WORDS.done); es.close();

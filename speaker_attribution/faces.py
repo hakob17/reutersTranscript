@@ -148,6 +148,44 @@ def _track_box_at(track: dict, t: float, slack: float = 0.6) -> dict | None:
     return best
 
 
+def bind_tracks_to_turns(tracks: list[dict],
+                         turns: list[tuple[float, float, str]]) -> None:
+    """ASD-lite: link face tracks to diarization labels by solo visibility.
+
+    A speaker turn votes for a track only when that track is the SINGLE
+    prominent face on screen for most of the turn (news editing favors solo
+    close-ups of the person talking). A track takes a label only with a
+    clear vote margin — ambiguity binds nothing. Sets track["speaker_label"].
+    Production replacement: Light-ASD (docs/DESIGN.md §3).
+    """
+    votes: dict[int, dict[str, int]] = {}
+    for t0, t1, label in turns:
+        dur = t1 - t0
+        if dur < 1.0:
+            continue
+        visible = []
+        for tr in tracks:
+            on = sum(1 for b in tr["boxes"]
+                     if t0 <= b["t"] <= t1 and b["w"] * b["h"] >= MIN_BIND_AREA)
+            if on * (1.0 / SAMPLE_FPS) >= 0.6 * dur:
+                visible.append(tr)
+        if len(visible) == 1:
+            tid = visible[0]["id"]
+            votes.setdefault(tid, {})
+            votes[tid][label] = votes[tid].get(label, 0) + 1
+
+    for tr in tracks:
+        tr.setdefault("speaker_label", None)
+        tally = votes.get(tr["id"])
+        if not tally:
+            continue
+        ranked = sorted(tally.items(), key=lambda kv: kv[1], reverse=True)
+        top_label, top = ranked[0]
+        second = ranked[1][1] if len(ranked) > 1 else 0
+        if top >= 1 and top >= 2 * second:
+            tr["speaker_label"] = top_label
+
+
 def bind_names_to_tracks(tracks: list[dict], sightings: list[dict]) -> list[str]:
     """Bind chyron-sighted names to face tracks in place. A sighting binds
     ONLY when exactly one sufficiently large face is on screen at its time —
