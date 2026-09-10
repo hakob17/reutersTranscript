@@ -393,11 +393,10 @@ function drawFaces() {
   // Only the CURRENT SPEAKER's face gets a box — bystanders never do, and
   // crowd shots (> CROWD_LIMIT faces) draw nothing unless the speaker's own
   // track is confidently linked.
-  const label = speakerLabelAt(t);
-  if (!label) return;
+  const label = speakerLabelAt(t);   // null during speech gaps — passive
   const visible = faceTracks.map(tr => ({tr, box: boxAt(tr, t)}))
                             .filter(v => v.box);
-  let speakerBoxes = visible.filter(v => v.tr.speaker_label === label);
+  let speakerBoxes = label ? visible.filter(v => v.tr.speaker_label === label) : [];
   let translated = false;
   if (!speakerBoxes.length && voLabels.has(label)) {
     // a narrator's translation VO is playing: the on-screen person whose
@@ -406,11 +405,32 @@ function drawFaces() {
       v.tr.speaker_label && !voLabels.has(v.tr.speaker_label));
     translated = true;
   }
-  if (!speakerBoxes.length) return;
-  if (visible.length > CROWD_LIMIT && !speakerBoxes.length) return;
+  // linked non-active speakers keep a subtle persistent box so the
+  // highlight shifts between conversation partners instead of blinking
+  const passiveBoxes = visible.filter(v =>
+    v.tr.speaker_label && !voLabels.has(v.tr.speaker_label) &&
+    !speakerBoxes.includes(v));
+  if (!speakerBoxes.length && !passiveBoxes.length) return;
+  if (visible.length > CROWD_LIMIT) {
+    if (!speakerBoxes.length) return;
+    passiveBoxes.length = 0;   // crowds: active speaker only
+  }
 
   const r = contentRect();
   ctx.font = '700 13px "Segoe UI", Arial, sans-serif';
+  for (const {tr, box} of passiveBoxes) {
+    const x = r.x + box.x * r.w, y = r.y + box.y * r.h;
+    ctx.strokeStyle = 'rgba(255,255,255,.55)';
+    ctx.lineWidth = 1.5;
+    ctx.strokeRect(x, y, box.w * r.w, box.h * r.h);
+    const text = speakerDisplayName(tr, tr.speaker_label);
+    if (text && text !== 'Speaking') {
+      ctx.fillStyle = 'rgba(0,0,0,.55)';
+      ctx.fillRect(x, Math.max(0, y - 18), ctx.measureText(text).width + 8, 18);
+      ctx.fillStyle = 'rgba(255,255,255,.9)';
+      ctx.fillText(text, x + 4, Math.max(13, y - 5));
+    }
+  }
   for (const {tr, box} of speakerBoxes) {
     const x = r.x + box.x * r.w, y = r.y + box.y * r.h;
     const w = box.w * r.w, h = box.h * r.h;
