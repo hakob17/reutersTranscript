@@ -76,6 +76,9 @@
   .seg .t { color:var(--muted); font-size:12px; float:right; font-variant-numeric:tabular-nums; }
   .seg .text { font-size:14.5px; margin-top:3px; }
   .seg .text-en { font-size:13px; margin-top:2px; color:var(--muted); font-style:italic; }
+  .seg.scene { background:#fbf7f3; }
+  .seg.scene .text { font-style:italic; color:#7a5a40; font-size:13.5px; }
+  .seg.scene .t { color:#b08860; }
   .chip { display:inline-block; font-size:11px; font-weight:700; border-radius:3px;
           padding:1px 7px; letter-spacing:.3px; }
   .chip.pending { background:#eee; color:var(--pending); }
@@ -123,6 +126,8 @@
               hidden>Speaker boxes</button>
       <button class="boxes-toggle on" id="enToggle" aria-pressed="true"
               hidden>English</button>
+      <button class="boxes-toggle on" id="descToggle" aria-pressed="true"
+              hidden>Descriptions</button>
       <div id="statusDetail"></div>
       <div class="meter" id="meter" role="progressbar" aria-label="Transcript processing edge"
            aria-valuemin="0" aria-valuemax="100" aria-valuenow="0">
@@ -186,7 +191,7 @@ fetch('/api/videos').then(r => r.json()).then(catalogue => {
 });
 
 /* ---- pipeline status rail (transcribing only appears on the ASR path) ---- */
-const STAGES = ['captions','audio','transcribing','translating','diarizing','attributing','chyron','faces','done'];
+const STAGES = ['captions','audio','transcribing','translating','diarizing','attributing','chyron','faces','scenes','done'];
 rail.innerHTML = STAGES.map(s => `<span class="stage" id="st-${s}">${s}</span>`).join('');
 const seenStages = new Set();
 function setStage(stage) {
@@ -264,6 +269,7 @@ const STAGE_WORDS = {
   translating: 'Translating the transcript to English.',
   chyron: 'Reading on-screen name graphics.',
   faces: 'Detecting faces on screen.',
+  scenes: 'Describing what is on screen.',
   done: 'Transcript complete.',
   cached: 'Transcript loaded instantly from cache.',
 };
@@ -277,6 +283,55 @@ enToggle.addEventListener('click', () => {
   enToggle.setAttribute('aria-pressed', showEn);
   lines.forEach(renderLine);
 });
+
+/* ---- scene descriptions: interleaved rows + descriptions track ---- */
+let scenes = [];
+let showDesc = true;
+const descToggle = document.getElementById('descToggle');
+descToggle.addEventListener('click', () => {
+  showDesc = !showDesc;
+  descToggle.classList.toggle('on', showDesc);
+  descToggle.setAttribute('aria-pressed', showDesc);
+  rebuildTranscript();
+});
+
+function sceneRow(s) {
+  const el = document.createElement('div');
+  el.className = 'seg scene';
+  el.dataset.start = s.t0;
+  el.setAttribute('role', 'button');
+  el.setAttribute('tabindex', '0');
+  el.setAttribute('aria-label', `Scene at ${fmt(s.t0)}: ${s.text}`);
+  el.innerHTML = `<span class="t">${fmt(s.t0)}</span>` +
+    `<div class="text" dir="auto">[On screen] ${s.text}</div>`;
+  return el;
+}
+
+function rebuildTranscript() {
+  box.innerHTML = '';
+  const items = lines.filter(Boolean).map(l => ({start: l.start, line: l}));
+  if (showDesc) for (const s of scenes) items.push({start: s.t0 + 0.001, scene: s});
+  items.sort((a, b) => a.start - b.start);
+  for (const it of items) {
+    if (it.line) renderLine(it.line);
+    else box.appendChild(sceneRow(it.scene));
+  }
+}
+
+let descTrackEl = null;
+function refreshDescTrack() {
+  if (!scenes.length) return;
+  const cues = scenes.map(s =>
+    `${vttTs(s.t0)} --> ${vttTs(Math.max(s.t1, s.t0 + 1))}\n${s.text}`);
+  const blob = new Blob(['WEBVTT\n\n' + cues.join('\n\n') + '\n'], {type: 'text/vtt'});
+  const el = document.createElement('track');
+  el.kind = 'descriptions'; el.label = 'Descriptions'; el.srclang = 'en';
+  el.src = URL.createObjectURL(blob);
+  if (descTrackEl) { URL.revokeObjectURL(descTrackEl.src); descTrackEl.remove(); }
+  descTrackEl = el;
+  video.appendChild(el);
+  el.track.mode = 'hidden';   // exposed to assistive tech, not burned on video
+}
 
 /* ---- face boxes: canvas overlay, gated on playhead ---- */
 let faceTracks = [];
@@ -438,6 +493,12 @@ es.onmessage = msg => {
     for (const it of ev.items) if (lines[it.i]) { lines[it.i].en = it.en; renderLine(lines[it.i]); }
     enToggle.hidden = false;
     announce(`English translation available for ${ev.items.length} lines.`);
+  } else if (ev.type === 'scene_text') {
+    scenes = ev.scenes || [];
+    descToggle.hidden = scenes.length === 0;
+    rebuildTranscript();
+    refreshDescTrack();
+    announce(`Scene descriptions available: ${scenes.length}.`);
   } else if (ev.type === 'face_tracks') {
     faceTracks = ev.tracks || [];
     const linked = faceTracks.filter(tr => tr.speaker_label);
