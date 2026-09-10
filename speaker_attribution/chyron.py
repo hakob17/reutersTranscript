@@ -197,6 +197,8 @@ def read_chyron_crops(
         messages=[{"role": "user", "content": content}],
     )
 
+    from .costs import record
+    record("chyron", MODEL, response.usage)
     raw = "".join(b.text for b in response.content if b.type == "text")
     raw = raw.replace("```json", "").replace("```", "").strip()
     try:

@@ -76,6 +76,8 @@ def attribute_speakers(
         system=SYSTEM_PROMPT,
         messages=[{"role": "user", "content": user_prompt}],
     )
+    from .costs import record
+    record("attribution", MODEL, response.usage)
     raw = "".join(b.text for b in response.content if b.type == "text")
     raw = raw.replace("```json", "").replace("```", "").strip()
 

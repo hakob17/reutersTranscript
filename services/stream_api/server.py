@@ -287,6 +287,8 @@ class Job:
             self.emit({"type": "status", "stage": "error", "detail": str(exc)})
 
     def _run(self) -> None:
+        from speaker_attribution import costs
+        costs.reset()
         emit = self.emit
         emit({"type": "status", "stage": "captions",
               "detail": "probing HLS master for a caption rendition"})
@@ -436,6 +438,7 @@ class Job:
                 emit({"type": "status", "stage": "scenes",
                       "detail": f"scene pass failed: {exc}"})
 
+        emit({"type": "costs", **costs.summary()})
         emit({"type": "done"})
 
         CACHE_DIR.mkdir(exist_ok=True)
@@ -458,6 +461,7 @@ class Job:
             import anthropic
             client = anthropic.Anthropic()
             numbered = "\n".join(f"{i}\t{c['text']}" for i, c in enumerate(cues))
+            from speaker_attribution.costs import record
             resp = client.messages.create(
                 model="claude-sonnet-4-6", max_tokens=8000,
                 system=("You translate news captions to English. Reply with "
@@ -466,6 +470,7 @@ class Job:
                         "— one entry per input line, faithful and concise; "
                         "keep names and titles as commonly romanized."),
                 messages=[{"role": "user", "content": numbered}])
+            record("translation", "claude-sonnet-4-6", resp.usage)
             raw = "".join(b.text for b in resp.content if b.type == "text")
             raw = raw.replace("```json", "").replace("```", "").strip()
             items = json.loads(raw).get("translations", [])

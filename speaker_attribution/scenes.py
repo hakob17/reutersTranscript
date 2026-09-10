@@ -85,6 +85,8 @@ def _describe_batch(client: anthropic.Anthropic, model: str,
     resp = client.messages.create(model=model, max_tokens=4000,
                                   system=SYSTEM_PROMPT,
                                   messages=[{"role": "user", "content": content}])
+    from .costs import record
+    record("scenes", model, resp.usage)
     raw = "".join(b.text for b in resp.content if b.type == "text")
     raw = raw.replace("```json", "").replace("```", "").strip()
     return json.loads(raw).get("shots", [])

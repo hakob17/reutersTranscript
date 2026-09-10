@@ -209,13 +209,15 @@ dominate hosted cost).
 
 ## 8. Phasing
 
-| Phase | Scope | Status vs. prototype |
+| Phase | Scope | Status (2026-09-10) |
 |---|---|---|
-| 1 | Caption attribution + streaming transcript + cache | **≈ done** (`services/stream_api`): caption-first, SSE protocol, dedup/cache/fresh, review flags |
-| 2 | Diarization fusion + faster-whisper fallback + caption-quality arbitration | mostly done (diarize + chunked ASR + boundary splits); arbitration + DeBERTa pre-filter + vLLM tier are the new work |
-| 3 | Vision track: SCRFD/ByteTrack boxes, Light-ASD, ArcFace gallery, PaddleOCR | new; chyron detector is the seed of the banner-region stage; `face_box` events + canvas overlay |
-| 4 | VLM scene descriptions, opt-in "described mode" | design + costing done (§3, §5); bounded GPU by opt-in + shot gating |
+| 1 | Caption attribution + streaming transcript + cache | **done** (`services/stream_api`): caption-first, SSE protocol, dedup/cache/fresh, review flags; + English translation stage for non-English transcripts |
+| 2 | Diarization fusion + faster-whisper fallback + caption-quality arbitration | mostly done (diarize + chunked ASR + word-boundary splits); remaining: arbitration, DeBERTa pre-filter, vLLM tier |
+| 3 | Vision track: boxes, ASD, name binding | **prototype done**: YuNet+IoU tracks, lip-motion ASD (MediaPipe MAR), chyron name binding, VO-narrator guards, coverage-consistency rule, diarized-turn gating incl. translated-over speakers; remaining: SCRFD/ByteTrack/Light-ASD upgrades, ArcFace gallery, PaddleOCR |
+| 4 | VLM scene descriptions, "described mode" | **prototype done**: shot detection in the face-pass decode, four-tier describe (talking-head/dup free tiers, Haiku, Opus escalation), interleaved rows + descriptions track; remaining: lazy described-mode trigger as the prod cost knob |
 | 5 | Live-stream mode: permanent trailing edge, online diarization, rolling fusion | new; protocol already supports it (edge < end forever) |
+
+Measured spend is emitted per run (`costs` event) from `speaker_attribution/costs.py`.
 
 GPU budget: Phases 1–2 CPU or minimal GPU; Phases 3–4 ≈ one L4/A10 per
 concurrent *first-view* stream; back catalog fills the cache offline at spot
