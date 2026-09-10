@@ -17,6 +17,8 @@ from __future__ import annotations
 import urllib.request
 from pathlib import Path
 
+from .gallery import _cos as cosine
+
 YUNET_URL = ("https://github.com/opencv/opencv_zoo/raw/main/models/"
              "face_detection_yunet/face_detection_yunet_2023mar.onnx")
 MODEL_DIR = Path(__file__).resolve().parent.parent / ".models"
@@ -31,6 +33,13 @@ TRACK_GAP_S = 0.75        # close a track after this long unmatched
 MIN_TRACK_S = 1.0         # drop blips shorter than this
 MIN_BIND_AREA = 0.02      # face must be >2% of frame to take a chyron NAME
 MIN_VIS_AREA = 0.006      # smaller faces (wide shots) still count as visible
+MAX_YAW = 0.5             # profile faces embed unreliably: a side profile
+                          # (yaw 1.18) matched the WRONG identity at 0.619;
+                          # every correctly recognized face measured <= 0.54
+SAME_PERSON_MIN = 0.35    # embedding cosine below this = a different person:
+                          # never extend a track across it
+TRACK_CONSISTENCY_MIN = 0.5  # early vs late faces of a track must agree,
+                             # else the track is never used for recognition
 FACE_RENDITION_H = 480    # decode this rendition for detection, not the
                           # master's first (= lowest) variant
 
@@ -129,13 +138,33 @@ def _iou(a: dict, b: dict) -> float:
     return inter / union if union > 0 else 0.0
 
 
+def _mean(vecs: list[list[float]]) -> list[float]:
+    n = len(vecs)
+    return [sum(v[i] for v in vecs) / n for i in range(len(vecs[0]))]
+
+
+def _yaw(yunet_row) -> float:
+    """Head-turn ratio from YuNet landmarks: nose-tip offset from the eye
+    midpoint over inter-eye distance. ~0 frontal, >1 near profile."""
+    rex, _, lex, _, nx, _ = (float(v) for v in yunet_row[4:10])
+    eyes = abs(lex - rex)
+    return abs(nx - (rex + lex) / 2) / eyes if eyes > 1e-3 else 9.0
+
+
 class IouTracker:
-    """Greedy IoU association; good enough between news shot cuts."""
+    """Greedy IoU association, identity-aware when embeddings exist: a face
+    whose embedding disagrees with the track's is never added to it (a
+    dissolve once chained Epstein's photo into an accuser's track)."""
 
     def __init__(self) -> None:
         self.next_id = 1
         self.open: list[dict] = []      # {id, boxes:[{t,x,y,w,h}]}
         self.closed: list[dict] = []
+
+    def cut(self) -> None:
+        """Hard shot cut: no face continues across it."""
+        self.closed.extend(self.open)
+        self.open = []
 
     def update(self, t: float, detections: list[dict]) -> None:
         unmatched = list(detections)
@@ -144,13 +173,20 @@ class IouTracker:
             best, best_iou = None, IOU_MATCH
             for d in unmatched:
                 iou = _iou(last, d)
-                if iou > best_iou:
-                    best, best_iou = d, iou
+                if iou <= best_iou:
+                    continue
+                if ("emb" in d and track.get("last_emb") is not None
+                        and cosine(d["emb"], track["last_emb"]) < SAME_PERSON_MIN):
+                    continue    # overlapping position, different person
+                best, best_iou = d, iou
             if best is not None:
                 track["boxes"].append({"t": t, **best})
+                if "emb" in best:
+                    track["last_emb"] = best["emb"]
                 unmatched.remove(best)
         for d in unmatched:
-            self.open.append({"id": self.next_id, "boxes": [{"t": t, **d}]})
+            self.open.append({"id": self.next_id, "boxes": [{"t": t, **d}],
+                              "last_emb": d.get("emb")})
             self.next_id += 1
         # close stale tracks (a shot cut ends everything at once)
         still_open = []
@@ -175,10 +211,16 @@ class IouTracker:
                      "boxes": [{k: round(float(v), 4) for k, v in b.items()
                                 if v is not None}
                                for b in boxes]}
+            # safety net: a slow dissolve can drift past the per-step check,
+            # so if early and late faces disagree the track likely blends
+            # two people — never use it for recognition
+            if len(embs) >= 4:
+                third = len(embs) // 3
+                if cosine(_mean(embs[:third]), _mean(embs[-third:])) \
+                        < TRACK_CONSISTENCY_MIN:
+                    embs = []
             if embs:   # mean embedding; internal only — stripped before emit
-                n = len(embs)
-                track["emb"] = [round(sum(e[i] for e in embs) / n, 5)
-                                for i in range(len(embs[0]))]
+                track["emb"] = [round(v, 5) for v in _mean(embs)]
             out.append(track)
         out.sort(key=lambda tr: tr["t0"])
         return out
@@ -253,16 +295,19 @@ def detect_face_tracks(video, sample_fps: float = SAMPLE_FPS,
                     detector.setInputSize((small.shape[1], small.shape[0]))
                     size_set = small.shape[:2]
 
+                gray = cv2.cvtColor(small, cv2.COLOR_BGR2GRAY)
+                hsv = cv2.cvtColor(small, cv2.COLOR_BGR2HSV)
+                hist = cv2.calcHist([hsv], [0, 1], None, [32, 32],
+                                    [0, 180, 0, 256])
+                cv2.normalize(hist, hist)
+                is_cut = (prev_hist is not None and
+                          cv2.compareHist(prev_hist, hist,
+                                          cv2.HISTCMP_CORREL) < 1 - SHOT_CUT_DIFF)
+                prev_hist = hist
+                if is_cut:
+                    tracker.cut()      # no face continues across a hard cut
+
                 if collect_shots:
-                    gray = cv2.cvtColor(small, cv2.COLOR_BGR2GRAY)
-                    hsv = cv2.cvtColor(small, cv2.COLOR_BGR2HSV)
-                    hist = cv2.calcHist([hsv], [0, 1], None, [32, 32],
-                                        [0, 180, 0, 256])
-                    cv2.normalize(hist, hist)
-                    is_cut = (prev_hist is not None and
-                              cv2.compareHist(prev_hist, hist,
-                                              cv2.HISTCMP_CORREL) < 1 - SHOT_CUT_DIFF)
-                    prev_hist = hist
                     if cur_shot is None or is_cut:
                         close_shot(t)
                         cur_shot = {"t0": t, "t1": t, "key_t": None,
@@ -294,7 +339,9 @@ def detect_face_tracks(video, sample_fps: float = SAMPLE_FPS,
                                          max(0, int(x)):int(x + bw)]
                             lit = crop.size > 0 and float(cv2.cvtColor(
                                 crop, cv2.COLOR_BGR2GRAY).mean()) >= 50
-                            e = embed(recognizer, small, f) if lit else None
+                            frontal = _yaw(f) <= MAX_YAW
+                            e = embed(recognizer, small, f) \
+                                if lit and frontal else None
                             if e is not None:
                                 d["emb"] = e
                         dets.append(d)
