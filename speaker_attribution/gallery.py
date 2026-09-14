@@ -64,27 +64,72 @@ def _cos(a: list[float], b: list[float]) -> float:
     return dot / (na * nb) if na > 0 and nb > 0 else 0.0
 
 
+def source_urls(source: str) -> dict:
+    """Where an enrollment's portrait came from, as links. Wikidata sources
+    are recorded as "wikidata:<qid> commons:<file name>"; manual headshots
+    and per-video enrollments have no public URL."""
+    if not source.startswith("wikidata:"):
+        return {}
+    qid, _, commons = source[len("wikidata:"):].partition(" commons:")
+    urls = {"wikidata": f"https://www.wikidata.org/wiki/{qid.strip()}"}
+    if commons:
+        from urllib.parse import quote
+        file_ = quote(commons.strip().replace(" ", "_"))
+        urls["commons_page"] = f"https://commons.wikimedia.org/wiki/File:{file_}"
+        urls["image"] = ("https://commons.wikimedia.org/wiki/Special:FilePath/"
+                         f"{file_}?width=800")
+    return urls
+
+
+def _with_urls(entry: dict) -> dict:
+    """Keep entry["urls"] aligned with entry["sources"] (older galleries
+    predate it)."""
+    urls = entry.get("urls") or []
+    sources = entry.get("sources", [])
+    if len(urls) != len(sources):
+        entry["urls"] = [source_urls(src) for src in sources]
+    return entry
+
+
 def load_gallery() -> dict:
     if GALLERY_PATH.exists():
-        return json.loads(GALLERY_PATH.read_text(encoding="utf-8"))
+        gallery = json.loads(GALLERY_PATH.read_text(encoding="utf-8"))
+        return {name: _with_urls(e) for name, e in gallery.items()}
     return {}
 
 
 def save_gallery(gallery: dict) -> None:
-    GALLERY_PATH.write_text(json.dumps(gallery, ensure_ascii=False),
+    """Readable layout: per person, sources and portrait links first, one
+    embedding per line (128 numbers each) last."""
+    def dumps(v):
+        return json.dumps(v, ensure_ascii=False)
+
+    blocks = []
+    for name, entry in gallery.items():
+        entry = _with_urls(entry)
+        fields = []
+        for key in ("sources", "urls"):
+            items = ",\n".join(f"      {dumps(x)}" for x in entry.get(key, []))
+            fields.append(f'    "{key}": [\n{items}\n    ]')
+        embs = ",\n".join(f"      {dumps(e)}" for e in entry.get("embs", []))
+        fields.append(f'    "embs": [\n{embs}\n    ]')
+        blocks.append(f"  {dumps(name)}: {{\n" + ",\n".join(fields) + "\n  }")
+    GALLERY_PATH.write_text("{\n" + ",\n".join(blocks) + "\n}\n",
                             encoding="utf-8")
 
 
 def enroll(gallery: dict, name: str, emb: list[float], source: str) -> bool:
     """Add an embedding; idempotent per source (re-seeding or reprocessing
     the same video adds nothing). Returns True if something was added."""
-    entry = gallery.setdefault(name, {"embs": [], "sources": []})
+    entry = _with_urls(gallery.setdefault(
+        name, {"embs": [], "sources": [], "urls": []}))
     if source in entry["sources"]:
         return False
     entry["embs"].append(emb)
     entry["sources"].append(source)
-    entry["embs"] = entry["embs"][-MAX_EMBS_PER_NAME:]
-    entry["sources"] = entry["sources"][-MAX_EMBS_PER_NAME:]
+    entry["urls"].append(source_urls(source))
+    for key in ("embs", "sources", "urls"):
+        entry[key] = entry[key][-MAX_EMBS_PER_NAME:]
     return True
 
 

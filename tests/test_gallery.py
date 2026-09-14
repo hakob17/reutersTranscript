@@ -44,3 +44,26 @@ def test_confidence_tiers():
     from speaker_attribution.gallery import HIGH_CONFIDENCE, is_confident
     assert is_confident(0.82) and is_confident(HIGH_CONFIDENCE)
     assert not is_confident(0.494)            # correct-but-weak -> hedged
+
+
+def test_source_urls_for_wikidata_and_manual():
+    from speaker_attribution.gallery import source_urls
+    u = source_urls("wikidata:Q714458 commons:2025 Dylan O'Brien.jpg")
+    assert u["wikidata"] == "https://www.wikidata.org/wiki/Q714458"
+    assert u["commons_page"].startswith("https://commons.wikimedia.org/wiki/File:2025_Dylan_O")
+    assert u["image"].startswith("https://commons.wikimedia.org/wiki/Special:FilePath/2025_Dylan_O")
+    assert source_urls("manual:headshot.jpg") == {}
+
+
+def test_save_load_roundtrip_keeps_urls_aligned(tmp_path, monkeypatch):
+    import json
+    from speaker_attribution import gallery as gal
+    monkeypatch.setattr(gal, "GALLERY_PATH", tmp_path / "gallery.json")
+    g = {"Old Entry": {"embs": [[0.1, 0.2]], "sources": ["wikidata:Q1 commons:A b.jpg"]}}
+    enroll(g, "New Person", [0.3, 0.4], "wikidata:Q2 commons:C.jpg")
+    gal.save_gallery(g)
+    raw = json.loads((tmp_path / "gallery.json").read_text(encoding="utf-8"))
+    loaded = gal.load_gallery()
+    assert raw["Old Entry"]["urls"][0]["wikidata"].endswith("/Q1")   # backfilled
+    assert loaded["New Person"]["urls"][0]["commons_page"].endswith("File:C.jpg")
+    assert loaded["New Person"]["embs"] == [[0.3, 0.4]]
