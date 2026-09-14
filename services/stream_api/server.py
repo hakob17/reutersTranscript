@@ -41,7 +41,7 @@ import time
 from pathlib import Path
 
 from fastapi import FastAPI
-from fastapi.responses import FileResponse, StreamingResponse
+from fastapi.responses import FileResponse, JSONResponse, StreamingResponse
 from fastapi.staticfiles import StaticFiles
 
 ROOT = Path(__file__).resolve().parents[2]
@@ -767,6 +767,43 @@ class Job:
         return cues
 
 
+AUTHORITY_BASE = ("https://video-authority.prod.global.a208065.reutersmedia.net"
+                  "/v1/videos/usn:")
+_authority: dict[str, dict] = {}   # usn -> catalogue-shaped entry
+
+
+def normalize_usn(raw: str) -> str | None:
+    usn = raw.strip()
+    if usn.lower().startswith("usn:"):
+        usn = usn[4:]
+    return usn if usn and usn.isalnum() else None
+
+
+def resolve_usn(raw: str) -> dict | None:
+    """Look a Reuters USN up in video-authority and return a catalogue entry
+    ({url, title}) for its HLS stream. Cached per process."""
+    usn = normalize_usn(raw)
+    if usn is None:
+        return None
+    if usn not in _authority:
+        import urllib.request
+        try:
+            with urllib.request.urlopen(AUTHORITY_BASE + usn, timeout=20) as r:
+                rec = json.loads(r.read().decode("utf-8"))
+        except Exception:
+            return None
+        url = (rec.get("stream") or {}).get("url")
+        if not url:
+            return None
+        _authority[usn] = {"url": url, "title": rec.get("title") or usn}
+    return _authority[usn]
+
+
+def lookup_video(video_id: str) -> dict | None:
+    """Catalogue entry, else a video-authority USN."""
+    return VIDEOS.get(video_id) or resolve_usn(video_id)
+
+
 class Registry:
     def __init__(self) -> None:
         self.jobs: dict[str, Job] = {}
@@ -789,7 +826,7 @@ class Registry:
             if fresh:
                 cached.unlink(missing_ok=True)
 
-            entry = VIDEOS.get(video_id, {})
+            entry = lookup_video(video_id) or {}
             job = Job(video_id, url, entry.get("title", ""),
                       live=bool(entry.get("live")))
             self.jobs[video_id] = job
@@ -818,14 +855,31 @@ def index():
                         headers={"Cache-Control": "no-cache"})
 
 
+@app.get("/video/{usn}")
+def video_page(usn: str):
+    # single-video page: same player, resolved by USN instead of the menu
+    return FileResponse(STATIC_DIR / "index.html",
+                        headers={"Cache-Control": "no-cache"})
+
+
 @app.get("/api/videos")
 def videos():
     return VIDEOS
 
 
+@app.get("/api/video/{video_id}")
+def video_entry(video_id: str):
+    entry = lookup_video(video_id)
+    if entry is None:
+        return JSONResponse({"error": "unknown video id or USN"},
+                            status_code=404)
+    return {"id": normalize_usn(video_id) if video_id not in VIDEOS
+            else video_id, **entry}
+
+
 @app.get("/api/stream/{video_id}")
 def stream(video_id: str, fresh: int = 0):
-    entry = VIDEOS.get(video_id)
+    entry = lookup_video(video_id)
     if entry is None:
         return StreamingResponse(
             iter([f"data: {json.dumps({'type': 'status', 'stage': 'error', 'detail': 'unknown video id'})}\n\n"]),
