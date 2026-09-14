@@ -585,11 +585,13 @@ class Job:
                         report = seed_people(self.people, persistent, recognizer)
                         if report["enrolled"]:
                             save_gallery(persistent)
+                        parts = [f"{what}: {', '.join(report[key])}"
+                                 for key, what in (("enrolled", "downloaded"),
+                                                   ("have", "already in gallery"),
+                                                   ("not_found", "no usable portrait"))
+                                 if report[key]]
                         emit({"type": "status", "stage": "faces",
-                              "detail": "Wikidata portraits: "
-                                        f"{len(report['enrolled'])} added, "
-                                        f"{len(report['have'])} already known, "
-                                        f"{len(report['not_found'])} not found"})
+                              "detail": "Wikidata portraits — " + "; ".join(parts)})
                 gallery = load_gallery()
                 for tr in tracks:
                     if "emb" not in tr:
