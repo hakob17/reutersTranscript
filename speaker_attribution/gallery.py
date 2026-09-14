@@ -14,6 +14,7 @@ AND beat the best other identity by a margin, else the face stays unnamed.
 from __future__ import annotations
 
 import json
+import os
 import urllib.request
 from pathlib import Path
 
@@ -114,8 +115,11 @@ def save_gallery(gallery: dict) -> None:
         embs = ",\n".join(f"      {dumps(e)}" for e in entry.get("embs", []))
         fields.append(f'    "embs": [\n{embs}\n    ]')
         blocks.append(f"  {dumps(name)}: {{\n" + ",\n".join(fields) + "\n  }")
-    GALLERY_PATH.write_text("{\n" + ",\n".join(blocks) + "\n}\n",
-                            encoding="utf-8")
+    # write-then-rename: a run loading the gallery mid-save must see the old
+    # file or the new one, never a truncated one
+    tmp = GALLERY_PATH.with_name(GALLERY_PATH.name + ".tmp")
+    tmp.write_text("{\n" + ",\n".join(blocks) + "\n}\n", encoding="utf-8")
+    os.replace(tmp, GALLERY_PATH)
 
 
 def enroll(gallery: dict, name: str, emb: list[float], source: str) -> bool:

@@ -171,6 +171,7 @@ const PATH_USN = location.pathname.startsWith('/video/')
 const SINGLE = PATH_USN !== null;
 const VIDEO_ID = SINGLE ? PATH_USN : (PARAMS.get('v') || '782809');
 const FRESH = PARAMS.get('fresh') === '1';
+const NOWIKI = FRESH && PARAMS.get('nowiki') === '1';
 
 const video = document.getElementById('video');
 const box = document.getElementById('transcript');
@@ -212,7 +213,8 @@ loadCatalogue.then(catalogue => {
   const freshHref = SINGLE ? '?fresh=1' : `?v=${VIDEO_ID}&fresh=1`;
   document.getElementById('videoLinks').innerHTML =
     ` <a href="${freshHref}" title="run the pipeline again from scratch — clears cached results and edited names">⟳ reprocess live</a>` +
-    (FRESH ? ' <b style="color:var(--accent)">(live run — cache skipped)</b>' : '');
+    ` · <a href="${freshHref}&nowiki=1" title="reprocess live without downloading Wikidata portraits — faces match only people already in the gallery">⟳ reprocess without Wikidata</a>` +
+    (FRESH ? ` <b style="color:var(--accent)">(live run — cache skipped${NOWIKI ? ', no Wikidata downloads' : ''})</b>` : '');
   const startPlayback = url => {
     if (video.canPlayType('application/vnd.apple.mpegurl')) video.src = url;
     else { const h = new Hls(); h.loadSource(url); h.attachMedia(video); }
@@ -261,6 +263,9 @@ const fmt = t => Math.floor(t/60) + ':' + String(Math.floor(t%60)).padStart(2,'0
 const escapeHtml = s => String(s ?? '').replace(/[&<>"']/g,
   c => ({'&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;'}[c]));
 
+// "Unidentified", "Unidentified speaker", "Unknown man": no information
+const isPlaceholderRole = r => !r || /^\s*(unidentified|unknown)/i.test(r);
+
 function chipHtml(l) {
   if (!l.label) return '<span class="chip pending">processing…</span>';
   const attrs = `data-label="${escapeHtml(l.label)}" title="Click to correct this speaker's name"`;
@@ -270,12 +275,12 @@ function chipHtml(l) {
   }
   const m = mapping[l.label];
   if (!m || m.name === 'Unidentified') {
-    const role = m && m.role && m.role.toLowerCase() !== 'unidentified' ? m.role : '';
+    const role = m && !isPlaceholderRole(m.role) ? m.role : '';
     return `<span class="chip unident" ${attrs}>${escapeHtml(role || 'Unknown speaker')}</span>`;
   }
   const edited = m.confidence === 'human' ? ' edited' : '';
   return `<span class="chip named${edited}" ${attrs}>${escapeHtml(m.name)}` +
-         `${m.role ? ' · ' + escapeHtml(m.role) : ''}</span>`;
+         `${!isPlaceholderRole(m.role) ? ' · ' + escapeHtml(m.role) : ''}</span>`;
 }
 
 /* ---- editor correction: click a speaker chip, type the right name ---- */
@@ -480,7 +485,7 @@ function speakerDisplayName(tr, label) {
   if (tr.name) return isTentative(tr) ? `Possibly ${tr.name}` : tr.name;
   const m = mapping && label ? mapping[label] : null;
   if (m && m.name !== 'Unidentified') return m.name;
-  if (m && m.role && m.role.toLowerCase() !== 'unidentified') return m.role;
+  if (m && !isPlaceholderRole(m.role)) return m.role;
   return 'Unknown speaker';
 }
 
@@ -562,7 +567,7 @@ function plainSpeaker(l) {
   if (!l.label) return '';
   if (!mapping) return 'Speaker ' + (parseInt(l.label.split('_')[1] || '0', 10) + 1);
   const m = mapping[l.label];
-  if (!m || m.name === 'Unidentified') return (m && m.role) || '';
+  if (!m || m.name === 'Unidentified') return m && !isPlaceholderRole(m.role) ? m.role : '';
   return m.name;
 }
 function vttTs(t) {
@@ -592,12 +597,13 @@ function refreshTrack() {
 }
 
 /* ---- SSE consumption ---- */
-const es = new EventSource(`/api/stream/${VIDEO_ID}${FRESH ? '?fresh=1' : ''}`);
+const es = new EventSource(`/api/stream/${VIDEO_ID}${FRESH ? '?fresh=1' : ''}${NOWIKI ? '&nowiki=1' : ''}`);
 if (FRESH) {
   // the reset is a one-time action: without this, refreshing the page after
   // editing a name would reprocess again and wipe the new edit
   const kept = new URLSearchParams(location.search);
   kept.delete('fresh');
+  kept.delete('nowiki');
   history.replaceState(null, '', location.pathname + (kept.toString() ? `?${kept}` : ''));
 }
 es.onmessage = msg => {

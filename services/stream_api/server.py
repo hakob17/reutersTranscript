@@ -310,12 +310,13 @@ class Job:
 
     def __init__(self, video_id: str, url: str, title: str = "",
                  live: bool = False, shotlist: str = "",
-                 people: list[str] | None = None):
+                 people: list[str] | None = None, use_wikidata: bool = True):
         self.video_id = video_id
         self.url = url
         self.title = title
         self.shotlist = shotlist
         self.people = people or []
+        self.use_wikidata = use_wikidata   # False: match the existing gallery only
         self.live = live
         self.events: list[dict] = []
         self.done = False
@@ -575,7 +576,11 @@ class Job:
             try:
                 from speaker_attribution.gallery import (
                     enroll, is_confident, load_gallery, match)
-                if self.people:
+                if self.people and not self.use_wikidata:
+                    emit({"type": "status", "stage": "faces",
+                          "detail": "Wikidata portraits skipped (nowiki=1) — "
+                                    "matching the existing gallery only"})
+                elif self.people:
                     from speaker_attribution.gallery import (
                         make_recognizer, save_gallery)
                     from speaker_attribution.wikidata import seed_people
@@ -618,8 +623,10 @@ class Job:
                         tr["gallery"] = score
                         tr["name_tentative"] = not is_confident(score)
                         recognized += 1
-            except Exception:
-                pass
+            except Exception as exc:
+                # boxes still render, but say why nobody was recognized
+                emit({"type": "status", "stage": "faces",
+                      "detail": f"face gallery unavailable, no recognition: {exc}"})
             for tr in tracks:
                 tr.pop("emb", None)   # embeddings never leave the server
 
@@ -638,8 +645,7 @@ class Job:
                     continue
                 name = names_found.pop()
                 score = max(g for n, g in hits if n == name)
-                role = m.role if m.role.strip().lower() not in (
-                    "", "unidentified") else ""
+                role = "" if placeholder_role(m.role) else m.role
                 result.mappings[label] = SpeakerMapping(
                     label=label, name=name, role=role, confidence="high",
                     evidence=f"face match {score} to a Wikidata portrait")
@@ -676,7 +682,7 @@ class Job:
                     label: (m.name if m.name != "Unidentified" else m.role)
                     for label, m in result.mappings.items()
                     if m.name != "Unidentified"
-                    or (m.role or "").strip().lower() not in ("", "unidentified")}
+                    or not placeholder_role(m.role)}
                 ctx = [it["en"] for it in translations[:40]] if translations \
                     else [c["text"] for c in cues[:40]]
                 context = (f"News video: {self.title or self.video_id}\n"
@@ -824,6 +830,12 @@ AUTHORITY_BASE = ("https://video-authority.prod.global.a208065.reutersmedia.net"
 _authority: dict[str, dict] = {}   # usn -> catalogue-shaped entry
 
 
+def placeholder_role(role: str | None) -> bool:
+    """"", "Unidentified", "Unidentified speaker", "Unknown man"... — a role
+    that only restates that nobody knows who this is."""
+    return (role or "").strip().lower().startswith(("unidentified", "unknown"))         or not (role or "").strip()
+
+
 def authority_people(rec: dict) -> list[str]:
     """People listed in a video-authority record's package notes. Used only
     as face-lookup candidates (Wikidata portraits); never given to the naming
@@ -872,8 +884,10 @@ class Registry:
         self.jobs: dict[str, Job] = {}
         self.lock = threading.Lock()
 
-    def get_or_start(self, video_id: str, url: str, fresh: bool = False) -> Job:
-        """fresh=True discards any finished job + cache and reprocesses live.
+    def get_or_start(self, video_id: str, url: str, fresh: bool = False,
+                     use_wikidata: bool = True) -> Job:
+        """fresh=True discards any finished job + cache and reprocesses live;
+        use_wikidata=False makes that run skip portrait downloads.
         A job still RUNNING is always attached to (dedup wins over fresh —
         never two parallel jobs for one video)."""
         with self.lock:
@@ -892,7 +906,8 @@ class Registry:
             entry = lookup_video(video_id) or {}
             job = Job(video_id, url, entry.get("title", ""),
                       live=bool(entry.get("live")),
-                      people=entry.get("people", []))
+                      people=entry.get("people", []),
+                      use_wikidata=use_wikidata)
             self.jobs[video_id] = job
             if not fresh and cached.exists():    # cache: replay, no processing
                 job.events = json.loads(cached.read_text(encoding="utf-8"))
@@ -958,7 +973,7 @@ def rename_speaker(video_id: str, body: dict = Body(...)):
 
 
 @app.get("/api/stream/{video_id}")
-def stream(video_id: str, fresh: int = 0):
+def stream(video_id: str, fresh: int = 0, nowiki: int = 0):
     entry = lookup_video(video_id)
     if entry is None:
         return StreamingResponse(
@@ -967,7 +982,9 @@ def stream(video_id: str, fresh: int = 0):
     if fresh:
         # reprocess live resets the video completely, editor names included
         overrides.clear(CACHE_DIR, video_id)
-    job = registry.get_or_start(video_id, entry["url"], fresh=bool(fresh))
+    # nowiki only shapes a new live run; a cached or running job is unaffected
+    job = registry.get_or_start(video_id, entry["url"], fresh=bool(fresh),
+                                use_wikidata=not nowiki)
 
     edits = overrides.load(CACHE_DIR, video_id)
 

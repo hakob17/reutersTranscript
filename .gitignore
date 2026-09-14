@@ -18,3 +18,4 @@ transcript_demo.zip
 *.tfstate.*
 services/stream_api/static/live/
 gallery.json
+gallery.json.tmp
