@@ -86,6 +86,11 @@
   .chip.diarized { background:#e8eaf6; color:#3949ab; }
   .chip.named { background:var(--accent); color:#fff; }
   .chip.unident { background:#eee; color:#555; }
+  .chip[data-label] { cursor:text; }
+  .chip[data-label]:hover { outline:1px dashed currentColor; outline-offset:1px; }
+  .chip.edited::after { content:" ✎"; font-weight:400; }
+  .chip-input { font:inherit; font-size:12px; padding:1px 6px; border:1px solid var(--accent);
+                border-radius:3px; min-width:180px; }
 
   /* accessibility */
   .sr-only { position:absolute; width:1px; height:1px; padding:0; margin:-1px;
@@ -253,16 +258,67 @@ const lines = [];           // {i,start,end,text,label,display,cls}
 let mapping = null;
 const fmt = t => Math.floor(t/60) + ':' + String(Math.floor(t%60)).padStart(2,'0');
 
+const escapeHtml = s => String(s ?? '').replace(/[&<>"']/g,
+  c => ({'&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;'}[c]));
+
 function chipHtml(l) {
   if (!l.label) return '<span class="chip pending">processing…</span>';
+  const attrs = `data-label="${escapeHtml(l.label)}" title="Click to correct this speaker's name"`;
   if (!mapping) {
     const n = parseInt(l.label.split('_')[1] || '0', 10) + 1;
-    return `<span class="chip diarized">Speaker ${n}</span>`;
+    return `<span class="chip diarized" ${attrs}>Speaker ${n}</span>`;
   }
   const m = mapping[l.label];
-  if (!m || m.name === 'Unidentified')
-    return `<span class="chip unident">${(m && m.role) || 'Unidentified'}</span>`;
-  return `<span class="chip named">${m.name}${m.role ? ' · ' + m.role : ''}</span>`;
+  if (!m || m.name === 'Unidentified') {
+    const role = m && m.role && m.role.toLowerCase() !== 'unidentified' ? m.role : '';
+    return `<span class="chip unident" ${attrs}>${escapeHtml(role || 'Unknown speaker')}</span>`;
+  }
+  const edited = m.confidence === 'human' ? ' edited' : '';
+  return `<span class="chip named${edited}" ${attrs}>${escapeHtml(m.name)}` +
+         `${m.role ? ' · ' + escapeHtml(m.role) : ''}</span>`;
+}
+
+/* ---- editor correction: click a speaker chip, type the right name ---- */
+function beginRename(chip) {
+  const label = chip.dataset.label;
+  const m = mapping && mapping[label];
+  const input = document.createElement('input');
+  input.className = 'chip-input';
+  input.value = m && m.name !== 'Unidentified' ? m.name : '';
+  input.placeholder = 'Name, or empty to clear';
+  input.setAttribute('aria-label', `Name for ${label}`);
+  chip.replaceWith(input);
+  input.focus(); input.select();
+  let done = false;
+  const finish = save => {
+    if (done) return; done = true;
+    if (!save) { lines.forEach(renderLine); return; }
+    const name = input.value.trim();
+    fetch(`/api/video/${encodeURIComponent(VIDEO_ID)}/speaker`, {
+      method: 'POST', headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify({label, name}),
+    }).then(r => r.ok ? r.json() : r.json().then(e => Promise.reject(e.error)))
+      .then(() => {
+        mapping = mapping || {};
+        if (name) mapping[label] = {name, role: '', confidence: 'human'};
+        faceTracks.forEach(tr => {
+          if (tr.speaker_label === label) {
+            tr.name = name || null; delete tr.gallery; delete tr.name_tentative;
+          }
+        });
+        lines.forEach(renderLine); refreshTrack(); drawFaces();
+        announce(name ? `Speaker renamed to ${name}.` : 'Speaker name cleared.');
+      })
+      .catch(err => { alert(`Could not save the name: ${err || 'server error'}`);
+                      lines.forEach(renderLine); });
+  };
+  input.addEventListener('keydown', e => {
+    e.stopPropagation();
+    if (e.key === 'Enter') finish(true);
+    else if (e.key === 'Escape') finish(false);
+  });
+  input.addEventListener('click', e => e.stopPropagation());
+  input.addEventListener('blur', () => finish(false));
 }
 function renderLine(l) {
   let el = document.getElementById('seg-' + l.i);
@@ -282,9 +338,12 @@ function seekTo(el) {
   video.currentTime = parseFloat(el.dataset.start) + 0.01; video.play();
 }
 box.addEventListener('click', e => {
+  const chip = e.target.closest('.chip[data-label]');
+  if (chip) { e.stopPropagation(); beginRename(chip); return; }
   const el = e.target.closest('.seg'); if (el) seekTo(el);
 });
 box.addEventListener('keydown', e => {
+  if (e.target.tagName === 'INPUT') return;
   if (e.key !== 'Enter' && e.key !== ' ') return;
   const el = e.target.closest('.seg'); if (!el) return;
   e.preventDefault(); seekTo(el);
@@ -421,8 +480,8 @@ function speakerDisplayName(tr, label) {
   if (tr.name) return isTentative(tr) ? `Possibly ${tr.name}` : tr.name;
   const m = mapping && label ? mapping[label] : null;
   if (m && m.name !== 'Unidentified') return m.name;
-  if (m && m.role) return m.role;
-  return 'Speaking';
+  if (m && m.role && m.role.toLowerCase() !== 'unidentified') return m.role;
+  return 'Unknown speaker';
 }
 
 const CROWD_LIMIT = 5;
@@ -471,7 +530,7 @@ function drawFaces() {
     ctx.strokeRect(x, y, box.w * r.w, box.h * r.h);
     ctx.setLineDash([]);
     const text = speakerDisplayName(tr, tr.speaker_label);
-    if (text && text !== 'Speaking') {
+    if (text && text !== 'Unknown speaker') {
       ctx.fillStyle = 'rgba(0,0,0,.55)';
       ctx.fillRect(x, Math.max(0, y - 18), ctx.measureText(text).width + 8, 18);
       ctx.fillStyle = 'rgba(255,255,255,.9)';
@@ -485,7 +544,7 @@ function drawFaces() {
     ctx.lineWidth = 2;
     ctx.strokeRect(x, y, w, h);
     let text = speakerDisplayName(tr, tr.speaker_label);
-    if (translated && text === 'Speaking') text = 'Speaker (translated)';
+    if (translated && text === 'Unknown speaker') text = 'Speaker (translated)';
     const tw = ctx.measureText(text).width + 10;
     ctx.fillStyle = '#fa6400';
     ctx.fillRect(x, Math.max(0, y - 20), tw, 20);

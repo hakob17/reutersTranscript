@@ -40,7 +40,7 @@ import threading
 import time
 from pathlib import Path
 
-from fastapi import FastAPI
+from fastapi import Body, FastAPI
 from fastapi.responses import FileResponse, JSONResponse, StreamingResponse
 from fastapi.staticfiles import StaticFiles
 
@@ -56,9 +56,12 @@ if sys.platform == "win32":
         os.add_dll_directory(str(_torch_lib))
 
 from speaker_attribution.attribute import attribute_speakers  # noqa: E402
+from speaker_attribution.models import SpeakerMapping  # noqa: E402
 from speaker_attribution.captions import (  # noqa: E402
     assign_cue_speakers, discover_caption_url, fetch_caption_cues)
 from speaker_attribution.transcribe import diarize_only, extract_audio  # noqa: E402
+
+from services.stream_api import overrides  # noqa: E402
 
 CACHE_DIR = ROOT / "out_stream"
 STATIC_DIR = Path(__file__).resolve().parent / "static"
@@ -306,11 +309,13 @@ class Job:
     late joiners, concurrent viewers, and cache replay the same code path."""
 
     def __init__(self, video_id: str, url: str, title: str = "",
-                 live: bool = False, shotlist: str = ""):
+                 live: bool = False, shotlist: str = "",
+                 people: list[str] | None = None):
         self.video_id = video_id
         self.url = url
         self.title = title
         self.shotlist = shotlist
+        self.people = people or []
         self.live = live
         self.events: list[dict] = []
         self.done = False
@@ -570,6 +575,21 @@ class Job:
             try:
                 from speaker_attribution.gallery import (
                     enroll, is_confident, load_gallery, match)
+                if self.people:
+                    from speaker_attribution.gallery import (
+                        make_recognizer, save_gallery)
+                    from speaker_attribution.wikidata import seed_people
+                    persistent = load_gallery()
+                    recognizer = make_recognizer()
+                    if recognizer is not None:
+                        report = seed_people(self.people, persistent, recognizer)
+                        if report["enrolled"]:
+                            save_gallery(persistent)
+                        emit({"type": "status", "stage": "faces",
+                              "detail": "Wikidata portraits: "
+                                        f"{len(report['enrolled'])} added, "
+                                        f"{len(report['have'])} already known, "
+                                        f"{len(report['not_found'])} not found"})
                 gallery = load_gallery()
                 for tr in tracks:
                     if "emb" not in tr:
@@ -600,6 +620,30 @@ class Job:
                 pass
             for tr in tracks:
                 tr.pop("emb", None)   # embeddings never leave the server
+
+            # a speaker whose linked face confidently matches a gallery
+            # portrait takes that name — only where no evidence named them,
+            # and only when all such matches for the speaker agree
+            face_named = False
+            for label, m in list(result.mappings.items()):
+                if m.name != "Unidentified":
+                    continue
+                hits = {(tr["name"], tr["gallery"]) for tr in tracks
+                        if tr.get("speaker_label") == label and tr.get("gallery")
+                        and not tr.get("name_tentative")}
+                names_found = {n for n, _ in hits}
+                if len(names_found) != 1:
+                    continue
+                name = names_found.pop()
+                score = max(g for n, g in hits if n == name)
+                role = m.role if m.role.strip().lower() not in (
+                    "", "unidentified") else ""
+                result.mappings[label] = SpeakerMapping(
+                    label=label, name=name, role=role, confidence="high",
+                    evidence=f"face match {score} to a Wikidata portrait")
+                face_named = True
+            if face_named:
+                emit(self._names_event(result, phase="faces"))
 
             named = sum(1 for t in tracks if t["name"])
             linked = sum(1 for t in tracks if t.get("speaker_label"))
@@ -778,19 +822,14 @@ AUTHORITY_BASE = ("https://video-authority.prod.global.a208065.reutersmedia.net"
 _authority: dict[str, dict] = {}   # usn -> catalogue-shaped entry
 
 
-def authority_shotlist(rec: dict) -> str:
-    """Editorial context from a video-authority record, in the shape the
-    attribution prompt expects from a shotlist. The description and package
-    notes typically name the people featured and quote their soundbites."""
+def authority_people(rec: dict) -> list[str]:
+    """People listed in a video-authority record's package notes. Used only
+    as face-lookup candidates (Wikidata portraits); never given to the naming
+    step, so a name reaches the screen only through a face match or an
+    editor's correction."""
+    from speaker_attribution.wikidata import candidate_people
     meta = rec.get("meta_data") or {}
-    parts = [
-        ("TITLE", rec.get("title")),
-        ("DESCRIPTION", rec.get("description")),
-        ("DATELINE", meta.get("dateline")),
-        ("LOCATION", meta.get("byline")),
-        ("PACKAGE NOTES (people and topics featured)", meta.get("package-notes")),
-    ]
-    return "\n".join(f"{k}: {v}" for k, v in parts if v)
+    return candidate_people(meta.get("package-notes", ""))
 
 
 def normalize_usn(raw: str) -> str | None:
@@ -817,7 +856,7 @@ def resolve_usn(raw: str) -> dict | None:
         if not url:
             return None
         _authority[usn] = {"url": url, "title": rec.get("title") or usn,
-                           "shotlist": authority_shotlist(rec)}
+                           "people": authority_people(rec)}
     return _authority[usn]
 
 
@@ -851,7 +890,7 @@ class Registry:
             entry = lookup_video(video_id) or {}
             job = Job(video_id, url, entry.get("title", ""),
                       live=bool(entry.get("live")),
-                      shotlist=entry.get("shotlist", ""))
+                      people=entry.get("people", []))
             self.jobs[video_id] = job
             if not fresh and cached.exists():    # cache: replay, no processing
                 job.events = json.loads(cached.read_text(encoding="utf-8"))
@@ -896,9 +935,24 @@ def video_entry(video_id: str):
     if entry is None:
         return JSONResponse({"error": "unknown video id or USN"},
                             status_code=404)
-    public = {k: v for k, v in entry.items() if k != "shotlist"}
+    public = {k: v for k, v in entry.items() if k != "people"}
     return {"id": normalize_usn(video_id) if video_id not in VIDEOS
             else video_id, **public}
+
+
+@app.post("/api/video/{video_id}/speaker")
+def rename_speaker(video_id: str, body: dict = Body(...)):
+    """Editor correction: {"label": "SPEAKER_00", "name": "..."}; an empty
+    name removes the correction."""
+    if lookup_video(video_id) is None:
+        return JSONResponse({"error": "unknown video id or USN"},
+                            status_code=404)
+    try:
+        saved = overrides.save(CACHE_DIR, video_id, body.get("label", ""),
+                               body.get("name", ""))
+    except ValueError as exc:
+        return JSONResponse({"error": str(exc)}, status_code=400)
+    return {"overrides": saved}
 
 
 @app.get("/api/stream/{video_id}")
@@ -910,6 +964,8 @@ def stream(video_id: str, fresh: int = 0):
             media_type="text/event-stream")
     job = registry.get_or_start(video_id, entry["url"], fresh=bool(fresh))
 
+    edits = overrides.load(CACHE_DIR, video_id)
+
     def gen():
         sent = 0
         while True:
@@ -920,6 +976,7 @@ def stream(video_id: str, fresh: int = 0):
                 sent = len(job.events)
                 finished = job.done
             for ev in pending:
+                ev = overrides.apply(ev, edits)
                 # default=float: stray numpy scalars must never kill the stream
                 yield f"data: {json.dumps(ev, ensure_ascii=False, default=float)}\n\n"
             if finished and sent >= len(job.events):

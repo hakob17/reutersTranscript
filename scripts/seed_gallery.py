@@ -20,22 +20,16 @@ Art. 9, BIPA, ...) — get a legal review before production use.
 from __future__ import annotations
 
 import argparse
-import json
 import sys
-import urllib.parse
-import urllib.request
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(ROOT))
 
-from speaker_attribution.faces import _yunet_path  # noqa: E402
 from speaker_attribution.gallery import (  # noqa: E402
-    embed, enroll, load_gallery, make_recognizer, save_gallery)
-
-# Wikimedia asks API clients to identify themselves
-UA = ("reutersTranscript-gallery-seeder/0.1 "
-      "(https://github.com/hakob17/reutersTranscript)")
+    enroll, load_gallery, make_recognizer, save_gallery)
+from speaker_attribution.wikidata import (  # noqa: E402
+    fetch_image, resolve, single_face_embedding)
 
 # (display name used on boxes, Wikidata search query)
 DEMO_PEOPLE = [
@@ -67,65 +61,6 @@ DEMO_PEOPLE = [
     ("Abdalla Hamdok", "Abdalla Hamdok"),
     ("Cate Blanchett", "Cate Blanchett"),
 ]
-
-
-def _get_json(url: str) -> dict:
-    req = urllib.request.Request(url, headers={"User-Agent": UA})
-    with urllib.request.urlopen(req, timeout=30) as r:
-        return json.loads(r.read().decode("utf-8"))
-
-
-def resolve(query: str) -> dict | None:
-    """Wikidata search -> first HUMAN (P31=Q5) item that has an image (P18)."""
-    search = _get_json(
-        "https://www.wikidata.org/w/api.php?" + urllib.parse.urlencode({
-            "action": "wbsearchentities", "search": query, "language": "en",
-            "type": "item", "limit": 7, "format": "json"}))
-    for hit in search.get("search", []):
-        qid = hit["id"]
-        ent = _get_json(
-            f"https://www.wikidata.org/wiki/Special:EntityData/{qid}.json")
-        claims = ent["entities"][qid].get("claims", {})
-        is_human = any(
-            c["mainsnak"].get("datavalue", {}).get("value", {}).get("id") == "Q5"
-            for c in claims.get("P31", []))
-        images = [c["mainsnak"]["datavalue"]["value"]
-                  for c in claims.get("P18", [])
-                  if "datavalue" in c["mainsnak"]]
-        if is_human and images:
-            return {"qid": qid, "label": hit.get("label", query),
-                    "description": hit.get("description", ""),
-                    "file": images[0]}
-    return None
-
-
-def fetch_image(filename: str, width: int = 800):
-    import cv2
-    import numpy as np
-    url = ("https://commons.wikimedia.org/wiki/Special:FilePath/"
-           + urllib.parse.quote(filename.replace(" ", "_"))
-           + f"?width={width}")
-    req = urllib.request.Request(url, headers={"User-Agent": UA})
-    with urllib.request.urlopen(req, timeout=60) as r:
-        data = np.frombuffer(r.read(), dtype=np.uint8)
-    return cv2.imdecode(data, cv2.IMREAD_COLOR)
-
-
-def single_face_embedding(img, recognizer):
-    """Embed the face ONLY if exactly one face is detected. -> (emb, n)."""
-    import cv2
-    h, w = img.shape[:2]
-    scale = min(1.0, 800 / max(h, w))
-    if scale < 1.0:
-        img = cv2.resize(img, (int(w * scale), int(h * scale)))
-        h, w = img.shape[:2]
-    det = cv2.FaceDetectorYN_create(str(_yunet_path()), "", (w, h),
-                                    score_threshold=0.7)
-    _, faces = det.detect(img)
-    n = 0 if faces is None else len(faces)
-    if n != 1:
-        return None, n
-    return embed(recognizer, img, faces[0]), 1
 
 
 def main() -> int:

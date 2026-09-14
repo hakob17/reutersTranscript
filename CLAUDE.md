@@ -95,6 +95,17 @@ frames to the vision model — detection gates what reaches the API.
   on-camera + B-roll). Cut detection needs both signals: hue correlation AND
   Bhattacharyya + gray-diff (dark-to-dark cuts keep correlation ~0.86). The
   tracker also refuses >2x box-size jumps between samples.
+- Video-authority records never feed the naming step. Their package-notes
+  people are only face-lookup candidates: `wikidata.resolve(exact=True)`
+  must match the name exactly (a loose search for the film "Being Heumann"
+  returns Judy Heumann) and be a human with a one-face portrait. A speaker
+  takes a gallery name only from a confident (>=0.60), unanimous match on
+  its linked faces, and only when no evidence already named it.
+- Editor corrections (`services/stream_api/overrides.py`) live in
+  `out_stream/<id>.names.json`, are applied to events at stream time (the
+  cached log stays the pipeline's own output), outrank everything, and are
+  never enrolled into the gallery. Speaker names reach innerHTML — keep
+  `escapeHtml` on every chip.
 - The player never draws a face box before its track's first detection
   (`t >= tr.t0`); pre-roll draws the next shot's box on the previous shot.
 - Chyron detection has two paths: `_text_score` on the lower band, and
