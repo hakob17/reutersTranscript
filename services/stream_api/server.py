@@ -962,6 +962,9 @@ def stream(video_id: str, fresh: int = 0):
         return StreamingResponse(
             iter([f"data: {json.dumps({'type': 'status', 'stage': 'error', 'detail': 'unknown video id'})}\n\n"]),
             media_type="text/event-stream")
+    if fresh:
+        # reprocess live resets the video completely, editor names included
+        overrides.clear(CACHE_DIR, video_id)
     job = registry.get_or_start(video_id, entry["url"], fresh=bool(fresh))
 
     edits = overrides.load(CACHE_DIR, video_id)

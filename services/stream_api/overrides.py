@@ -31,6 +31,11 @@ def load(cache_dir: Path, video_id: str) -> dict[str, str]:
         return {}
 
 
+def clear(cache_dir: Path, video_id: str) -> None:
+    """Drop every correction for a video (reprocessing starts clean)."""
+    path_for(cache_dir, video_id).unlink(missing_ok=True)
+
+
 def clean_name(name: str) -> str:
     """Collapse whitespace and strip control characters; '' clears."""
     name = "".join(ch for ch in (name or "") if ch.isprintable())

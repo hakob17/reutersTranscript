@@ -211,7 +211,7 @@ loadCatalogue.then(catalogue => {
 
   const freshHref = SINGLE ? '?fresh=1' : `?v=${VIDEO_ID}&fresh=1`;
   document.getElementById('videoLinks').innerHTML =
-    ` <a href="${freshHref}" title="skip the cache and run the pipeline live">⟳ reprocess live</a>` +
+    ` <a href="${freshHref}" title="run the pipeline again from scratch — clears cached results and edited names">⟳ reprocess live</a>` +
     (FRESH ? ' <b style="color:var(--accent)">(live run — cache skipped)</b>' : '');
   const startPlayback = url => {
     if (video.canPlayType('application/vnd.apple.mpegurl')) video.src = url;
@@ -593,6 +593,13 @@ function refreshTrack() {
 
 /* ---- SSE consumption ---- */
 const es = new EventSource(`/api/stream/${VIDEO_ID}${FRESH ? '?fresh=1' : ''}`);
+if (FRESH) {
+  // the reset is a one-time action: without this, refreshing the page after
+  // editing a name would reprocess again and wipe the new edit
+  const kept = new URLSearchParams(location.search);
+  kept.delete('fresh');
+  history.replaceState(null, '', location.pathname + (kept.toString() ? `?${kept}` : ''));
+}
 es.onmessage = msg => {
   const ev = JSON.parse(msg.data);
   logEl.textContent += JSON.stringify(ev).slice(0, 220) + '\n';

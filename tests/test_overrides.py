@@ -36,3 +36,10 @@ def test_apply_face_tracks_names_linked_faces():
     t1 = out["tracks"][0]
     assert t1["name"] == "Sian Heder" and "gallery" not in t1 and "name_tentative" not in t1
     assert out["tracks"][1]["name"] is None
+
+
+def test_clear_removes_all_corrections(tmp_path):
+    overrides.save(tmp_path, "vid1", "SPEAKER_01", "Some woman speaking")
+    overrides.clear(tmp_path, "vid1")
+    assert overrides.load(tmp_path, "vid1") == {}
+    overrides.clear(tmp_path, "vid1")          # clearing twice is harmless
