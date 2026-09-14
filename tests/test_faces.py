@@ -192,3 +192,74 @@ def test_binding_conflict_unbinds():
     ])
     assert tracks[0]["name"] is None
     assert any("conflicting" in w for w in warnings)
+
+
+def test_tracker_refuses_scale_jump_without_embeddings():
+    # missed cut: a big close-up becomes a small face at an overlapping
+    # position; no embeddings to compare, so size is the only evidence
+    tr = IouTracker()
+    for i in range(8):                    # >= MIN_TRACK_S each side
+        tr.update(i * 0.17, [{"x": 0.31, "y": 0.10, "w": 0.19, "h": 0.49}])
+    for i in range(8, 16):
+        tr.update(i * 0.17, [{"x": 0.31, "y": 0.24, "w": 0.12, "h": 0.29}])
+    assert len(tr.finish()) == 2
+
+
+def test_turn_split_at_cuts_links_partial_on_camera_speaker():
+    # one 18 s turn: speaker on camera 24-32 s (44%), B-roll before and after.
+    # Whole-turn visibility (60%) can never pass; the on-camera shot window can.
+    talker = _track_with_mar(1, 23.7, 31.8, 0.4, [0.1, 0.4, 0.15, 0.45])
+    turns = [(21.4, 39.8, "SPEAKER_00")]
+    bind_tracks_to_turns([talker], turns)
+    assert talker["speaker_label"] is None            # old behaviour
+    talker = _track_with_mar(1, 23.7, 31.8, 0.4, [0.1, 0.4, 0.15, 0.45])
+    bind_tracks_to_turns([talker], turns, cuts=[23.67, 31.9])
+    assert talker["speaker_label"] == "SPEAKER_00"
+
+
+def _emb_track(tid, t0, t1, x, mars, emb=None):
+    tr = _track_with_mar(tid, t0, t1, x, mars)
+    if emb is not None:
+        tr["emb"] = emb
+    return tr
+
+
+TALK = [0.1, 0.4, 0.15, 0.45]
+
+
+def test_identity_unverified_solo_broll_face_unlinked():
+    # director on camera (embedding), her voice continues over a cutaway
+    # where a different, lone interviewee moves her lips (no embedding)
+    director = _emb_track(1, 0.0, 14.3, 0.4, TALK, emb=[1.0, 0.0, 0.0])
+    cutaway = _emb_track(2, 17.5, 20.3, 0.5, TALK)
+    turns = [(0.3, 21.8, "SPEAKER_01")]
+    bind_tracks_to_turns([director, cutaway], turns, cuts=[14.5, 17.5])
+    assert director["speaker_label"] == "SPEAKER_01"
+    assert cutaway["speaker_label"] is None
+
+
+def test_identity_mismatched_embedding_unlinked():
+    a = _emb_track(1, 0.0, 10.0, 0.4, TALK, emb=[1.0, 0.0, 0.0])
+    b = _emb_track(2, 11.0, 16.0, 0.4, TALK, emb=[0.0, 1.0, 0.0])
+    # without the identity check both faces would link to the one voice
+    bind_tracks_to_turns([a, b], [(0.0, 16.0, "SPEAKER_00")], cuts=[11.0])
+    assert a["speaker_label"] == "SPEAKER_00" and b["speaker_label"] is None
+
+
+def test_identity_same_person_across_shots_kept():
+    a = _emb_track(1, 0.0, 10.0, 0.4, TALK, emb=[1.0, 0.1, 0.0])
+    b = _emb_track(2, 11.0, 16.0, 0.4, TALK, emb=[0.9, 0.2, 0.0])
+    bind_tracks_to_turns([a, b], [(0.0, 16.0, "SPEAKER_00")], cuts=[11.0])
+    assert a["speaker_label"] == b["speaker_label"] == "SPEAKER_00"
+
+
+def test_identity_unembedded_two_shot_winner_kept():
+    # close-up with embedding, plus the same guest in a two-shot where he
+    # clearly out-talks the other face but is too small to embed
+    close = _emb_track(1, 0.0, 10.0, 0.4, TALK, emb=[1.0, 0.0, 0.0])
+    guest = _emb_track(2, 12.0, 20.0, 0.2, TALK)
+    host = _emb_track(3, 12.0, 20.0, 0.7, [0.12, 0.12, 0.13, 0.12])
+    bind_tracks_to_turns([close, guest, host], [(0.0, 20.0, "SPEAKER_00")],
+                         cuts=[11.0])
+    assert guest["speaker_label"] == "SPEAKER_00"
+    assert host["speaker_label"] is None

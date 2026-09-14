@@ -29,6 +29,8 @@ FACE_LANDMARKER_URL = ("https://storage.googleapis.com/mediapipe-models/"
 
 SAMPLE_FPS = 6            # detection sampling rate (lip motion needs >=6)
 IOU_MATCH = 0.30          # detection -> track association threshold
+MAX_SCALE_JUMP = 2.0      # a face box can't grow/shrink more than this between
+                          # samples (1/6 s); bigger jumps are a new person
 TRACK_GAP_S = 0.75        # close a track after this long unmatched
 MIN_TRACK_S = 1.0         # drop blips shorter than this
 MIN_BIND_AREA = 0.02      # face must be >2% of frame to take a chyron NAME
@@ -175,6 +177,9 @@ class IouTracker:
                 iou = _iou(last, d)
                 if iou <= best_iou:
                     continue
+                ratio = (d["w"] * d["h"]) / max(last["w"] * last["h"], 1e-9)
+                if not 1 / MAX_SCALE_JUMP <= ratio <= MAX_SCALE_JUMP:
+                    continue    # size jump: a missed cut, not the same face
                 if ("emb" in d and track.get("last_emb") is not None
                         and cosine(d["emb"], track["last_emb"]) < SAME_PERSON_MIN):
                     continue    # overlapping position, different person
@@ -226,7 +231,24 @@ class IouTracker:
         return out
 
 
-SHOT_CUT_DIFF = 0.45      # HSV-histogram distance that counts as a hard cut
+SHOT_CUT_DIFF = 0.45      # HSV-histogram correlation drop that is a hard cut
+CUT_BHATTACHARYYA = 0.35  # second cut signal: histogram distance AND ...
+CUT_GRAY_DIFF = 30.0      # ... mean absolute pixel change. Dark-to-dark cuts
+                          # keep hue correlation high (0.86 on a real cut);
+                          # these two separate them (0.48 / 36.8 at the cut,
+                          # below 0.3 / 25 everywhere inside those shots)
+
+
+def is_hard_cut(prev_hist, hist, prev_gray, gray) -> bool:
+    """Shot cut between two consecutive sampled frames."""
+    import cv2
+    if prev_hist is None:
+        return False
+    if cv2.compareHist(prev_hist, hist, cv2.HISTCMP_CORREL) < 1 - SHOT_CUT_DIFF:
+        return True
+    return (cv2.compareHist(prev_hist, hist, cv2.HISTCMP_BHATTACHARYYA)
+            > CUT_BHATTACHARYYA
+            and float(cv2.absdiff(gray, prev_gray).mean()) > CUT_GRAY_DIFF)
 SHOT_MIN_S = 1.0          # merge shorter "shots" into their predecessor
 
 
@@ -264,7 +286,7 @@ def detect_face_tracks(video, sample_fps: float = SAMPLE_FPS,
 
     tracker = IouTracker()
     shots: list[dict] = []
-    prev_hist = None
+    prev_hist = prev_gray = None
     cur_shot: dict | None = None
 
     def close_shot(t_end: float) -> None:
@@ -300,10 +322,8 @@ def detect_face_tracks(video, sample_fps: float = SAMPLE_FPS,
                 hist = cv2.calcHist([hsv], [0, 1], None, [32, 32],
                                     [0, 180, 0, 256])
                 cv2.normalize(hist, hist)
-                is_cut = (prev_hist is not None and
-                          cv2.compareHist(prev_hist, hist,
-                                          cv2.HISTCMP_CORREL) < 1 - SHOT_CUT_DIFF)
-                prev_hist = hist
+                is_cut = is_hard_cut(prev_hist, hist, prev_gray, gray)
+                prev_hist, prev_gray = hist, gray
                 if is_cut:
                     tracker.cut()      # no face continues across a hard cut
 
@@ -393,8 +413,14 @@ def _lip_energy(track: dict, t0: float, t1: float) -> float | None:
 
 def bind_tracks_to_turns(tracks: list[dict],
                          turns: list[tuple[float, float, str]],
-                         exclude_labels: set[str] | None = None) -> None:
+                         exclude_labels: set[str] | None = None,
+                         cuts: list[float] | None = None) -> None:
     """ASD: link face tracks to diarization labels.
+
+    Voting runs per window: each turn is split at shot cuts, because one
+    speaker's turn often runs across several shots (on camera, then over
+    B-roll). Judged against the whole turn, a speaker on screen for only
+    part of it could never link.
 
     Solo shots vote by visibility (the single prominent face during a turn
     is the speaker) — gated by lip motion when landmarks are available, so a
@@ -410,8 +436,15 @@ def bind_tracks_to_turns(tracks: list[dict],
     # legacy mode when no landmarks exist at all (mediapipe unavailable)
     has_mar = any("mar" in b for tr in tracks for b in tr["boxes"][:80])
 
-    votes: dict[int, dict[str, int]] = {}
+    cuts = sorted(cuts or [])
+    windows = []
     for t0, t1, label in turns:
+        edges = [t0] + [c for c in cuts if t0 < c < t1] + [t1]
+        windows.extend((a, b, label) for a, b in zip(edges, edges[1:]))
+
+    votes: dict[int, dict[str, int]] = {}
+    comparative: set[tuple[int, str]] = set()   # won a multi-face lip contest
+    for t0, t1, label in windows:
         dur = t1 - t0
         if dur < 1.0 or label in exclude_labels:
             continue
@@ -441,6 +474,7 @@ def bind_tracks_to_turns(tracks: list[dict],
                 second = scored[1][1]
                 if top >= LIP_FLOOR and top >= LIP_MARGIN * max(second, 1e-6):
                     winner = top_tr
+                    comparative.add((top_tr["id"], label))
         if winner is not None:
             tid = winner["id"]
             votes.setdefault(tid, {})
@@ -456,6 +490,29 @@ def bind_tracks_to_turns(tracks: list[dict],
         second = ranked[1][1] if len(ranked) > 1 else 0
         if top >= 1 and top >= 2 * second:
             tr["speaker_label"] = top_label
+
+    # identity consistency: one speaker label is one person. The anchor is
+    # that speaker's best-supported face with an embedding; every other face
+    # linked to the label must match it, or — when it has no embedding to
+    # compare — must have beaten other on-screen faces in a lip-motion
+    # contest. A lone face moving its lips while the voice plays over B-roll
+    # is not enough (observed: a red-carpet interviewee boxed as the director
+    # whose voice continued over the cutaway).
+    for label in {tr["speaker_label"] for tr in tracks if tr["speaker_label"]}:
+        linked = [tr for tr in tracks if tr["speaker_label"] == label]
+        embedded = [tr for tr in linked if "emb" in tr]
+        if not embedded:
+            continue                   # nothing to verify against
+        anchor = max(embedded, key=lambda tr: (votes[tr["id"]].get(label, 0),
+                                               tr["t1"] - tr["t0"]))
+        for tr in linked:
+            if tr is anchor:
+                continue
+            if "emb" in tr:
+                if cosine(tr["emb"], anchor["emb"]) < SAME_PERSON_MIN:
+                    tr["speaker_label"] = None
+            elif (tr["id"], label) not in comparative:
+                tr["speaker_label"] = None
 
     # coverage consistency: an on-camera voice shows its face across much of
     # its speech; a sliver of "match" against long speech is a false positive

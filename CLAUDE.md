@@ -87,6 +87,16 @@ frames to the vision model — detection gates what reaches the API.
   Epstein's face).
 - Face voting excludes ANY narrator/voice-over label (named or not): lip
   motion can't tell "speaking now" from "speaking in archive footage".
+- One speaker label = one person. Faces linked to a label must match its
+  anchor face's embedding; a face with no embedding keeps the link only if it
+  won a multi-face lip-motion contest. A lone lip-moving face over someone
+  else's voice (B-roll cutaway) must not link.
+- Speaker turns are split at shot cuts before face voting (a turn often spans
+  on-camera + B-roll). Cut detection needs both signals: hue correlation AND
+  Bhattacharyya + gray-diff (dark-to-dark cuts keep correlation ~0.86). The
+  tracker also refuses >2x box-size jumps between samples.
+- The player never draws a face box before its track's first detection
+  (`t >= tr.t0`); pre-roll draws the next shot's box on the previous shot.
 - Chyron detection has two paths: `_text_score` on the lower band, and
   `_find_strap_box` (bright box with dark text). Keep both — the text score
   collapses on busy backgrounds (0.0 on a clear strap over foliage). Strap

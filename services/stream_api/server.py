@@ -306,10 +306,11 @@ class Job:
     late joiners, concurrent viewers, and cache replay the same code path."""
 
     def __init__(self, video_id: str, url: str, title: str = "",
-                 live: bool = False):
+                 live: bool = False, shotlist: str = ""):
         self.video_id = video_id
         self.url = url
         self.title = title
+        self.shotlist = shotlist
         self.live = live
         self.events: list[dict] = []
         self.done = False
@@ -436,7 +437,7 @@ class Job:
                           "detail": "refreshing names on the live transcript"})
                     result = attribute_speakers(
                         video_id=self.video_id, segments=segments,
-                        shotlist="", byline="")
+                        shotlist=self.shotlist, byline="")
                     emit(self._names_event(result, phase="live"))
                     attr_lines = len(cues)
 
@@ -517,7 +518,7 @@ class Job:
         emit({"type": "status", "stage": "attributing",
               "detail": "resolving names via Claude"})
         result = attribute_speakers(video_id=self.video_id, segments=segments,
-                                    shotlist="", byline="")
+                                    shotlist=self.shotlist, byline="")
         emit(self._names_event(result, phase="transcript"))
 
         # Chyron pass: read on-screen name graphics and upgrade the mapping.
@@ -556,7 +557,8 @@ class Job:
             vo_labels = {label for label, m in result.mappings.items()
                          if _re.search(r"narrat|voice.?over",
                                        m.role, _re.IGNORECASE)}
-            bind_tracks_to_turns(tracks, turns, exclude_labels=vo_labels)
+            bind_tracks_to_turns(tracks, turns, exclude_labels=vo_labels,
+                                 cuts=[s["t0"] for s in shots[1:]])
             for i, tr in enumerate(tracks, 1):  # small stable display ids
                 tr["id"] = i
             # face gallery: the persistent gallery holds public figures only
@@ -621,10 +623,14 @@ class Job:
                             "(talking-head/dup skip, haiku→opus)"})
             try:
                 from speaker_attribution.scenes import describe_shots
+                # only speakers with a real name or role; an unknown speaker
+                # gets a Haiku description instead of "Unidentified speaking
+                # on camera"
                 display_names = {
-                    label: (m.name if m.name != "Unidentified"
-                            else (m.role or "Speaker"))
-                    for label, m in result.mappings.items()}
+                    label: (m.name if m.name != "Unidentified" else m.role)
+                    for label, m in result.mappings.items()
+                    if m.name != "Unidentified"
+                    or (m.role or "").strip().lower() not in ("", "unidentified")}
                 ctx = [it["en"] for it in translations[:40]] if translations \
                     else [c["text"] for c in cues[:40]]
                 context = (f"News video: {self.title or self.video_id}\n"
@@ -772,6 +778,21 @@ AUTHORITY_BASE = ("https://video-authority.prod.global.a208065.reutersmedia.net"
 _authority: dict[str, dict] = {}   # usn -> catalogue-shaped entry
 
 
+def authority_shotlist(rec: dict) -> str:
+    """Editorial context from a video-authority record, in the shape the
+    attribution prompt expects from a shotlist. The description and package
+    notes typically name the people featured and quote their soundbites."""
+    meta = rec.get("meta_data") or {}
+    parts = [
+        ("TITLE", rec.get("title")),
+        ("DESCRIPTION", rec.get("description")),
+        ("DATELINE", meta.get("dateline")),
+        ("LOCATION", meta.get("byline")),
+        ("PACKAGE NOTES (people and topics featured)", meta.get("package-notes")),
+    ]
+    return "\n".join(f"{k}: {v}" for k, v in parts if v)
+
+
 def normalize_usn(raw: str) -> str | None:
     usn = raw.strip()
     if usn.lower().startswith("usn:"):
@@ -795,7 +816,8 @@ def resolve_usn(raw: str) -> dict | None:
         url = (rec.get("stream") or {}).get("url")
         if not url:
             return None
-        _authority[usn] = {"url": url, "title": rec.get("title") or usn}
+        _authority[usn] = {"url": url, "title": rec.get("title") or usn,
+                           "shotlist": authority_shotlist(rec)}
     return _authority[usn]
 
 
@@ -828,7 +850,8 @@ class Registry:
 
             entry = lookup_video(video_id) or {}
             job = Job(video_id, url, entry.get("title", ""),
-                      live=bool(entry.get("live")))
+                      live=bool(entry.get("live")),
+                      shotlist=entry.get("shotlist", ""))
             self.jobs[video_id] = job
             if not fresh and cached.exists():    # cache: replay, no processing
                 job.events = json.loads(cached.read_text(encoding="utf-8"))
@@ -873,8 +896,9 @@ def video_entry(video_id: str):
     if entry is None:
         return JSONResponse({"error": "unknown video id or USN"},
                             status_code=404)
+    public = {k: v for k, v in entry.items() if k != "shotlist"}
     return {"id": normalize_usn(video_id) if video_id not in VIDEOS
-            else video_id, **entry}
+            else video_id, **public}
 
 
 @app.get("/api/stream/{video_id}")

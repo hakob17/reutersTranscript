@@ -388,7 +388,11 @@ function contentRect() {
 }
 
 function boxAt(tr, t) {
-  if (t < tr.t0 - 0.4 || t > tr.t1 + 0.4) return null;
+  // never before the face's first detection: a track that starts at a cut
+  // would otherwise be drawn on the previous shot, ahead of its person
+  // (faces are sampled at 6 fps, so a box may start up to 1/6 s late, never
+  // early); at most half a sample past its last detection
+  if (t < tr.t0 || t > tr.t1 + 0.08) return null;
   let best = null, bestDt = 0.5;   // tracks are sampled at ~4 fps
   for (const b of tr.boxes) {
     const dt = Math.abs(b.t - t);
